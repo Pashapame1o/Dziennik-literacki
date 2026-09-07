@@ -1,7 +1,12 @@
 # Dziennik literacki
-
-Dziennik emocji zamieniany w opowiadanie w stylu klasycznego autora. Aplikacja
-do użytku osobistego — każdy użytkownik podpina własny model i klucz API.
+Często się zastanawiałem, czy da się zrobić coś więcej z codziennym journalingiem niż tylko zapisywać: „dzisiaj było tak i tak”.
+No i chyba znalazłem rozwiązanie.
+Zrobiłem Dziennik literacki — wrzucasz do niego swoje wydarzenia, emocje, ludzi, którzy pojawili się w ciągu dnia, a AI zamienia to w opowiadanie napisane w stylu wybranego autora.
+Na razie jest Dostojewski, więc można sobie zafundować trochę egzystencjalnego cierpienia.
+Najciekawsze jest to, że aplikacja nie generuje każdego tekstu od zera. Pamięta postacie, wcześniejsze wydarzenia i aktualny rozdział, więc z kolejnych wpisów może powstawać jedna ciągła historia.
+Czyli w skrócie:
+żyjesz sobie normalnie, a AI robi z tego książkę...
+Aplikacja do użytku osobistego — każdy użytkownik podpina własny model i klucz API.
 
 Pełna specyfikacja: [`SPEC.md`](SPEC.md). Ten plik opisuje tylko jak
 uruchomić to, co jest zaimplementowane (Milestone 1, 2 i praca poza kolejnością
