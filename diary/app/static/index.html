@@ -313,31 +313,72 @@ function diaryApp() {
       const reader = body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
+      let pendingCr = false;
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
+      // SSE dopuszcza CRLF, LF i samo CR jako koniec linii, a sse-starlette wysyła
+      // CRLF — dlatego normalizujemy do LF, zanim zaczniemy szukać pustej linii.
+      // Końcowe \r trzymamy do następnego chunku: jego \n może przyjść osobnym
+      // pakietem, a wtedy \r zamieniony w locie udawałby koniec eventu.
+      const feed = (text) => {
+        if (pendingCr) { text = '\r' + text; pendingCr = false; }
+        if (text.endsWith('\r')) { pendingCr = true; text = text.slice(0, -1); }
+        buffer += text.replace(/\r\n|\r/g, '\n');
+      };
 
+      const drain = () => {
         let sep;
         while ((sep = buffer.indexOf('\n\n')) >= 0) {
           const rawEvent = buffer.slice(0, sep);
           buffer = buffer.slice(sep + 2);
           this.handleSseEvent(rawEvent);
         }
+      };
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        feed(decoder.decode(value, { stream: true }));
+        drain();
       }
+
+      feed(decoder.decode());
+      if (pendingCr) { buffer += '\n'; pendingCr = false; }
+      drain();
+      // ostatni event bywa bez zamykającej pustej linii
+      if (buffer.trim()) this.handleSseEvent(buffer);
+
       this.generating = false;
+
+      // 200 OK i pusty ekran to nie jest sukces — powiedz o tym wprost,
+      // zamiast zostawiać użytkownika z samymi przyciskami.
+      if (!this.errorMessage && !this.storyText.trim()) {
+        this.errorMessage = 'Model nie zwrócił żadnego tekstu. Sprawdź klucz API, adres API i nazwę modelu w ustawieniach (ikona ⚙).';
+        this.screen = 2;
+      }
     },
 
     handleSseEvent(rawEvent) {
       let eventType = 'message';
-      let data = '';
+      const dataLines = [];
+
       for (const line of rawEvent.split('\n')) {
-        if (line.startsWith('event:')) eventType = line.slice(6).trim();
-        else if (line.startsWith('data:')) data += line.slice(5).trim();
+        if (!line || line.startsWith(':')) continue; // komentarz, m.in. ping z sse-starlette
+        const colon = line.indexOf(':');
+        const field = colon === -1 ? line : line.slice(0, colon);
+        let value = colon === -1 ? '' : line.slice(colon + 1);
+        if (value.startsWith(' ')) value = value.slice(1); // spec: dokładnie jedna spacja, reszty nie ruszamy
+        if (field === 'event') eventType = value;
+        else if (field === 'data') dataLines.push(value);
       }
-      if (!data) return;
-      const payload = JSON.parse(data);
+      if (!dataLines.length) return;
+
+      let payload;
+      try {
+        payload = JSON.parse(dataLines.join('\n'));
+      } catch (e) {
+        console.error('Nieczytelny event SSE, pomijam:', rawEvent, e);
+        return; // jeden uszkodzony event nie może ubić całego strumienia
+      }
 
       if (eventType === 'stage') {
         this.currentStage = payload.stage;

@@ -63,6 +63,26 @@ async def test_all_five_stages_emitted_in_order():
 
 
 @pytest.mark.asyncio
+async def test_messages_include_a_non_system_turn():
+    """Regresja: same-system messages (bez tury user/assistant) łamią dostawców,
+    których warstwa OpenAI-compatible pod spodem mapuje system -> systemInstruction
+    i wymaga niepustego 'contents' (np. Gemini zwraca wtedy 400 'contents is not
+    specified'). Prawdziwy OpenAI to toleruje, więc lukę widać dopiero na innym
+    dostawcy — ten test pilnuje kształtu payloadu niezależnie od providera."""
+    profile = load_author_profile("dostoevsky")
+    adapter = MockAdapter(chunks=["Coś."])
+
+    await _collect(profile, adapter)
+
+    assert adapter.received_messages is not None
+    roles = [m["role"] for m in adapter.received_messages]
+    assert roles[0] == "system"
+    assert any(role != "system" for role in roles), (
+        "messages zawiera wyłącznie rolę system — Gemini i podobne bramki odrzucą to jako 400"
+    )
+
+
+@pytest.mark.asyncio
 async def test_bad_api_key_yields_readable_error_event_not_an_exception():
     profile = load_author_profile("dostoevsky")
     adapter = MockAdapter(raise_auth_error=True)

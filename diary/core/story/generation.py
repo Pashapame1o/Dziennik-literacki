@@ -9,6 +9,7 @@ once M2/M3 fill them in. Only "piszę" does real work in M1.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import AsyncIterator, Literal
 
@@ -16,6 +17,17 @@ from diary.core.llm.base import LLMAdapter, LLMError
 from diary.core.story.mood_input import MoodInput
 from diary.core.story.prompt_builder import build_prompt
 from diary.core.style.profile import AuthorProfile
+
+logger = logging.getLogger(__name__)
+
+# Generyczny, treściowo pusty domykacz tury. Cała treść zadania (styl, świat,
+# nastrój, format) żyje w system prompcie — ten komunikat tylko go wyzwala.
+# Bez niego niektóre bramki OpenAI-compatible (np. Gemini) odrzucają request
+# kodem 400: pod spodem mapują system → systemInstruction, a resztę wiadomości
+# → contents, i wymagają co najmniej jednej wiadomości spoza roli system.
+# Prawdziwy OpenAI był tu wyjątkowo tolerancyjny, więc lukę widać dopiero na
+# innym dostawcy — patrz też SPEC 3.5 (jeden adapter, wiele providerów).
+USER_TURN_TRIGGER = "Napisz teraz opowiadanie zgodnie z powyższymi wytycznymi."
 
 Stage = Literal[
     "dobieram fragmenty stylu",
@@ -70,7 +82,10 @@ async def generate_story(
     yield StageEvent("przypominam bohaterów")
 
     system_prompt = build_prompt(profile=profile, mood_input=mood_input, story_language=story_language)
-    messages = [{"role": "system", "content": system_prompt}]
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": USER_TURN_TRIGGER},
+    ]
 
     yield StageEvent("piszę")
     try:
@@ -78,6 +93,13 @@ async def generate_story(
             yield TokenEvent(chunk)
     except LLMError as exc:
         yield ErrorEvent(str(exc))
+        return
+    except Exception:  # noqa: BLE001
+        # Nic nie może zniknąć po cichu w środku strumienia: bez tego wyjątek
+        # inny niż LLMError ubijał odpowiedź SSE w połowie, a przeglądarka
+        # widziała tylko urwany tekst bez żadnego komunikatu.
+        logger.exception("Nieoczekiwany błąd podczas generowania opowiadania")
+        yield ErrorEvent("Nieoczekiwany błąd podczas generowania. Szczegóły w logach serwera.")
         return
 
     yield StageEvent("sprawdzam")

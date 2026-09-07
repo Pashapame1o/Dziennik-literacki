@@ -7,12 +7,15 @@ Works against the OpenAI API itself and any OpenAI-compatible endpoint
 from __future__ import annotations
 
 import json
+import logging
 from typing import AsyncIterator
 
 import httpx
 from pydantic import BaseModel
 
 from diary.core.llm.base import LLMAdapter, LLMAuthError, LLMRequestError, Message
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAICompatibleAdapter(LLMAdapter):
@@ -76,14 +79,21 @@ class OpenAICompatibleAdapter(LLMAdapter):
                         await response.aread()
                         self._raise_for_status(response)
                     async for line in response.aiter_lines():
-                        if not line or not line.startswith("data: "):
+                        line = line.rstrip("\r")
+                        # niektóre bramki zgodne z OpenAI wysyłają "data:{...}" bez spacji
+                        if not line.startswith("data:"):
                             continue
-                        data = line[len("data: "):]
+                        data = line[len("data:"):].lstrip()
                         if data == "[DONE]":
                             return
-                        chunk = json.loads(data)
-                        delta = chunk["choices"][0].get("delta", {})
-                        text = delta.get("content")
+                        try:
+                            chunk = json.loads(data)
+                            delta = chunk["choices"][0].get("delta", {})
+                            text = delta.get("content")
+                        except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+                            # pojedynczy uszkodzony chunk nie może uciąć reszty opowiadania
+                            logger.warning("Pomijam nieczytelny chunk SSE od dostawcy: %r", data[:200])
+                            continue
                         if text:
                             yield text
         except httpx.HTTPError as exc:
