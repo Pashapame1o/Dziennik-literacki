@@ -38,6 +38,12 @@ class Settings(BaseSettings):
 
     timezone: str | None = None
 
+    # M2: SQLite storage (SPEC 7.1) and helpline locale (SPEC 6.5). *.db is
+    # gitignored per SPEC 9.1; relative path resolves against the process cwd,
+    # matching how `diary serve` is normally run from the repo root.
+    db_path: str = "diary.db"
+    helplines_locale: str = "pl"
+
 
 _base_settings = Settings()
 _current: ContextVar[Settings] = ContextVar("diary_settings", default=_base_settings)

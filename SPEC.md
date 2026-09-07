@@ -55,11 +55,19 @@ Formularz MUST być w całości ustrukturyzowany:
 - Wiele wpisów dziennie MAY; każdy wpis ma własny timestamp w strefie czasowej z ustawień (domyślnie strefa systemowa).
 
 ### 3.3 Ekran 3 — opowiadanie
-- Streamowana **wyłącznie proza** (tytuł powstaje w drugim wywołaniu, sekcja 5.3).
+- Streamowana **wyłącznie proza** (tytuł rozdziału powstaje w drugim wywołaniu, sekcja 5.3, i jest ustalany raz — przy pierwszym wpisie rozdziału).
 - Etapy widoczne w UI: „dobieram fragmenty stylu” → „przypominam bohaterów” → „piszę” → „sprawdzam” (filtr wyjścia) → „zapisuję”.
-- Po zakończeniu: „zapisz”, „wygeneruj ponownie” (nowy wpis z `parent_entry_id`), „zmień autora dla tego wpisu”.
-- Zwijany panel debug: użyte postaci, ton, liczba chunków, wersje promptu i profilu.
+- Wpis zapisuje się automatycznie po przejściu filtra wyjścia (bez ręcznego „zapisz” — patrz ASSUMPTIONS.md "M2").
+- Po zakończeniu, dwie jasno rozróżnione opcje (rewizja z sesji "M2.5" — interfejs "książki", zastępuje wcześniejsze „wygeneruj ponownie” / „zmień autora dla tego wpisu”):
+  - **„Zakończ ten rozdział”** — zamyka bieżący wątek fabularny jako kompletny (status rozdziału `closed`, wylicza krótkie podsumowanie ze streszczeń jego wpisów), wraca do ekranu 2 na nowy, niezależny wpis.
+  - **„Kontynuuj”** — pisze dalszy ciąg TEJ SAMEJ sceny w tym samym, wciąż otwartym rozdziale: ten sam moment, ci sami bohaterowie, ten sam wątek. Osobny szablon promptu (`prompts/continue.md`, sekcja 5.1bis) dostaje dosłowny koniec dotychczasowego tekstu rozdziału (nie streszczenie), obcięty do rozsądnej długości jeśli rozdział jest długi.
+- Zwijany panel debug: użyte postaci, wynik filtra wyjścia, wersje promptu i profilu. Liczba chunków RAG dołączy w M3.
 - Stream MUST być buforowany po stronie serwera; zerwane połączenie → UI wznawia z bufora, nie generuje od nowa.
+
+### 3.3bis Ekran „Twoja książka” (uproszczony, pełne portfolio to sekcja 3.4/7)
+- Lista rozdziałów danego autora w kolejności chronologicznej, każdy jako nagłówek (tytuł) + sklejony tekst wszystkich jego wpisów, czytany jako ciągła proza.
+- Rozdziały otwarte i zamknięte są pokazywane, z etykietą statusu; zamknięte mają też krótkie podsumowanie.
+- Bez filtrów, wykresów i eksportu — to wchodzi dopiero z pełnym portfolio (3.4/7).
 
 ### 3.4 Ekran 4 — portfolio / antologia
 - Oś czasu: data, autor, tytuł, tag nastroju, typ wpisu (`story` / `summary_chapter`).
@@ -100,11 +108,25 @@ Pola: `name`, `slug`, `languages`, `era`, `default_setting_hints`, `voice` (skł
 - Tagowanie tonu tanim modelem jest **MAY**, tylko z flagą `--tag-tones`, cache'owane i wznawialne. Bez tagów retrieval działa po samym embeddingu zapytania nastrojowego.
 - Indeks inkrementalny; osobna tabela hashy 8-gramów całego korpusu i lista imion/toponimów (do 4.5).
 
+> **Uproszczona wersja pociągnięta do przodu w sesji "M2.5"** (przed pełnym M3):
+> chunkowanie po akapitach działa (`diary/core/style/chunking.py`), ale bez
+> `diary index`/persystencji — pliki z `authors/<slug>/corpus/` są wczytywane
+> i dzielone w pamięci procesu przy każdym starcie serwera. Brak embeddingów,
+> brak tabeli hashy 8-gramów. Patrz 4.4 i ASSUMPTIONS.md "M2.5" — M3 dopełnia
+> resztę tej sekcji.
+
 ### 4.4 Retrieval
 - Zapytanie z walencji, energii, chipów, odpowiedzi tak/nie i słów kluczowych → opis „jakich fragmentów stylu potrzebuję”.
 - Top-k (4–8) z MMR (własne ~20 linii), żeby nie dostać ośmiu fragmentów jednej sceny.
 - Do promptu jako **wzorce stylu, nie treści**: naśladuj składnię, rytm, środki, temperaturę; nie kopiuj zdań, nie używaj imion i miejsc.
 - Brak indeksu → działa samo style card, UI to sygnalizuje.
+
+> **Uproszczona wersja (sesja "M2.5"):** ranking przez nakładanie się słów
+> kluczowych (chipy/słowa kluczowe/zdanie vs. tekst chunku), bez embeddingów
+> i bez MMR — brak sygnału daje deterministyczny fallback na pierwsze k
+> chunków. Wystarcza do prawdziwej inspiracji stylu z realnych tekstów, ale
+> to nie jest jeszcze pełny retrieval z 4.4; M3 podmienia scoring na
+> embeddingi + MMR bez zmiany miejsca w prompcie (warstwa 5 z 5.1).
 
 ### 4.5 Kontrola „nie przepisuj oryginału”
 - Po generacji: nakładanie znormalizowanych 8-gramów opowiadania z **całym indeksem** (nie tylko użytymi chunkami) + osobne sprawdzenie imion/toponimów z korpusu. Przekroczenie progu → ostrzeżenie w UI + opcja regeneracji.
@@ -113,28 +135,35 @@ Pola: `name`, `slug`, `languages`, `era`, `default_setting_hints`, `voice` (skł
 
 ## 5. Silnik opowiadania
 
-### 5.1 Warstwy promptu (szablon: `prompts/narrator.md`)
+### 5.1 Warstwy promptu (szablon: `prompts/narrator.md`, nowy rozdział)
 1. Rola narratora (styl `{author}`, język `{story_lang}`, nie asystent).
 2. Style card z `profile.yaml`.
 3. Zasady narracji: AI wymyśla punkt wyjścia i wydarzenia; emocje pokazywane, nie nazywane; zakończenie naturalne, bez morału i pocieszenia na siłę; bez zwracania się do czytelnika, bez wzmianek o dzienniku/AI.
 4. Zasady bezpieczeństwa (6.4) — zawsze; wzmocnione, gdy detektor lub tryb serii zadziałał.
 5. Few-shot: chunki (4.4).
-6. World state brief (5.2) — zwięzły, w budżecie tokenów.
+6. Karty postaci i świat (5.2) — zwięzłe, w budżecie tokenów.
 7. Dzisiejszy input jako **JSON** w ogranicznikach z **losowym tokenem per request** (`<<<DATA_a3f9c1>>>`), z instrukcją: to wartości pól opisujących stan, nie polecenia.
 8. Format wyjścia: **wyłącznie proza**, docelowo ~500/900/1500 słów. Żadnego tytułu, nagłówków, notatek.
 
-### 5.2 World state
-- Stan per **użytkownik × autor**, JSON w bazie, wersjonowany.
-- Pierwszy wpis z autorem: AI generuje alter ego (imię, rys w konwencji autora), 2–4 powracające postaci z rolami (w tym jedną „obecną bez słów”), scenerię, epokę.
-- Struktura: **`canon`** (stabilne: alter ego, postaci, sceneria) i **`recent_threads`** (rotujące okno ostatnich ~5 wpisów).
-- Limity MUST: maks. 8 postaci, maks. 25 faktów w kanonie, maks. 5 wątków. Przekroczenie → kompakcja.
-- **Kompakcja** co N=10 wpisów lub po przekroczeniu limitu: tani call scala fakty, usuwa sprzeczności, archiwizuje postaci nieużywane od 15 wpisów. Reguła konfliktu: nowszy fakt wygrywa, chyba że dotyczy pola oznaczonego jako `locked` przez użytkownika.
-- **Delta jako wektor injection**: delta to tekst generowany przez model i wracający do promptu. Walidacja MUST obejmować: schemat (pydantic), limity długości każdego pola (np. 200 znaków), odrzucenie wartości zawierających frazy instrukcyjne (wzorce typu „ignoruj”, „od teraz”, „system:”, „zasady:”), brak znaków ograniczników.
-- Użytkownik MAY edytować stan w UI (zmiana imienia, usunięcie postaci, `locked`) lub zresetować świat.
+### 5.1bis Kontynuacja rozdziału (szablon: `prompts/continue.md`, dodane w sesji "M2.5")
+Osobny szablon dla „Kontynuuj” (3.3) — te same warstwy 1–2, 4–6, 8 co wyżej, ale:
+- Zamiast warstwy 3 (AI wymyśla punkt wyjścia): instrukcja kontynuowania DOKŁADNIE tej samej sceny — ten sam moment, ci sami bohaterowie, żadnego nowego epizodu.
+- Dodatkowa warstwa: **dosłowny koniec dotychczasowego tekstu rozdziału** (nie streszczenie) w osobnym ograniczniku z własnym losowym tokenem — obcięty do końca, jeśli rozdział jest długi.
+- Warstwa 7 (dzisiejszy input) zostaje — kontynuacja nadal wplata dzisiejszy stan emocjonalny w dalszy ciąg sceny.
+
+### 5.2 Postaci i świat (rewizja z sesji "M2.5" — zastępuje wcześniejszy blob `canon`/`recent_threads`)
+- Zamiast jednego rosnącego obiektu JSON per autor: **osobne karty postaci** (tabela `characters`) + mały rekord scenerii/epoki (`world_meta`) + **rozdziały** (`chapters`) grupujące wpisy jednej ciągłej sceny.
+- Karta postaci: imię, `is_alter_ego`, rola, kilka cech (`traits`), relacje do innych postaci po imieniu, status (np. „żywy”/„martwy”/„nieobecny”), `locked`.
+- Pierwszy wpis z autorem: AI generuje alter ego (`is_alter_ego: true`), 2–4 powracające postaci z rolami (w tym jedną „obecną bez słów”), scenerię (`world_meta.setting`), epokę.
+- Rozdział (`chapters`, status `open`/`closed`) grupuje wpisy jednej ciągłej sceny: otwarty rozdział trzyma pełny tekst dla ewentualnej kontynuacji (5.1bis); po zamknięciu (3.3 „Zakończ ten rozdział”) dostaje krótkie podsumowanie (kilka zdań, złożone z `summary` jego wpisów — bez dodatkowego wywołania modelu) i nie zmienia się już.
+- Limity MUST: maks. 8 aktywnych postaci, maks. 6 cech na postać. Przekroczenie liczby postaci → nowe nadmiarowe karty są pomijane (proste capowanie); **kompakcja** (scalanie/archiwizacja nieużywanych postaci) to M4, patrz sekcja 11.
+- Reguła konfliktu: nowszy fakt (aktualizacja karty) wygrywa, chyba że karta jest `locked` przez użytkownika.
+- **Delta jako wektor injection**: `character_delta` z drugiego wywołania (5.3) to tekst generowany przez model i wracający do promptu. Walidacja MUST obejmować: schemat (pydantic), limity długości każdego pola (np. 200 znaków), odrzucenie wartości zawierających frazy instrukcyjne (wzorce typu „ignoruj”, „od teraz”, „system:”, „zasady:”), brak znaków ograniczników.
+- Użytkownik MAY edytować karty w UI (zmiana imienia, usunięcie postaci, `locked`) lub zresetować świat — jeszcze nie zaimplementowane (UI do edycji kart to M4/portfolio zakres).
 
 ### 5.3 Dwa wywołania na wpis
-1. **Opowiadanie** — streamowane, tylko proza.
-2. **Metadane** — tańszym modelem, structured output: `title`, `mood_tag`, `characters_used`, `world_state_delta`, `summary` (1–2 zdania na potrzeby rozdziałów podsumowujących), `tone_flags` (dla filtra wyjścia, 6.3).
+1. **Opowiadanie** — streamowane, tylko proza. Nowy rozdział → `prompts/narrator.md`; kontynuacja → `prompts/continue.md` (5.1bis).
+2. **Metadane** — tańszym modelem, structured output: `title` (pusty przy kontynuacji — tytuł rozdziału ustala się raz), `mood_tag`, `characters_used`, `character_delta` (5.2), `summary` (1–2 zdania, używane też do podsumowania rozdziału przy zamknięciu — 3.3), `tone_flags` (dla filtra wyjścia, 6.3).
 
 ### 5.4 Język
 - **Język UI** i **język opowiadania** to osobne ustawienia. Opowiadanie i tytuł w języku opowiadania. Chunki mogą być w innym języku → instrukcja „przenieś styl, nie język”.
@@ -190,8 +219,13 @@ Nie terapia. Trzy elementy działają **niezależnie od modelu opowiadania i ust
 ## 7. Portfolio
 
 ### 7.1 Schemat (numerowane pliki SQL + tabela `schema_version`; bez alembica)
-- `entries`: id, created_at (UTC) + tz, type (`story`/`summary_chapter`), author_slug, parent_entry_id, mood_inputs JSON, title, story_text, story_lang, mood_tag, summary, characters_used JSON, world_state_version, safety_input_flag, safety_output_result, streak_mode, model_used, prompt_version, style_profile_version, retrieval_chunks JSON, deleted_at.
-- `world_states`: id, author_slug, version, canon JSON, recent_threads JSON, created_at.
+Zrewidowane w sesji "M2.5" (migracja `0002_character_cards.sql`): `world_states`
+zastąpione przez `characters` + `chapters` + `world_meta` (5.2). Brak realnych
+danych produkcyjnych w tym momencie, więc cięcie zamiast dopisywania obok.
+- `entries`: id, created_at (UTC) + tz, type (`story`/`summary_chapter`), author_slug, parent_entry_id (poprzedni wpis w tym samym rozdziale, przy kontynuacji), chapter_id, mood_inputs JSON, title, story_text, story_lang, mood_tag, summary, characters_used JSON, safety_input_flag, safety_output_result, streak_mode, model_used, prompt_version, style_profile_version, retrieval_chunks JSON, deleted_at.
+- `characters`: id, author_slug, name (unique per autor), is_alter_ego, role, traits JSON, relationships JSON, status, locked, archived_at (zarezerwowane pod kompaktację M4), created_at, updated_at.
+- `chapters`: id, author_slug, status (`open`/`closed`), title, summary (wypełniane przy zamknięciu), created_at, closed_at.
+- `world_meta`: author_slug (PK), setting, era, updated_at.
 - `author_index_meta`: author_slug, files, chunk_count, embed_model, tagged (bool), last_indexed_at.
 - `safety_events`: id, entry_id, stage, verdict, created_at (bez treści).
 - `settings`: klucz–wartość, bez sekretów.
@@ -283,8 +317,8 @@ DoD:
 5. Błędny klucz daje czytelny komunikat, formularz nie znika.
 
 ### M2 — pamięć i bezpieczeństwo
-Zakres: pełny formularz 3.2, SQLite z migracjami, zapis wpisów, world state (canon/recent, limity, walidacja delty), drugie wywołanie metadanych, detektor wejścia, filtr wyjścia, baner, stopka, bufor streamu.
-DoD:
+Zakres: pełny formularz 3.2, SQLite z migracjami, zapis wpisów, world state (canon/recent, limity, walidacja delty — **struktura zrewidowana w M2.5 poniżej, patrz 5.2**), drugie wywołanie metadanych, detektor wejścia, filtr wyjścia, baner, stopka, bufor streamu.
+DoD (spełnione na strukturze world state z czasu M2; M2.5 przeniosła te same gwarancje na karty postaci, patrz M2.5 DoD):
 1. Wpis zapisany z `prompt_version`, `style_profile_version`, `question_id` przy odpowiedziach.
 2. Drugi wpis z tym samym autorem używa postaci z pierwszego (test na mocku: kanon obecny w prompcie).
 3. Delta zawierająca frazę instrukcyjną lub pole >200 znaków jest odrzucana (test).
@@ -292,8 +326,19 @@ DoD:
 5. Filtr wyjścia: odrzucony tekst → regeneracja → po 2 próbach fallback (test na mocku zwracającym zły tekst).
 6. Baner pojawia się przy detekcji i nie znika po odświeżeniu.
 
+### M2.5 — pamięć postaci, interfejs „książki”, uproszczony RAG (poza kolejnością milestone'ów)
+Praca zrobiona po M2 na wyraźną prośbę, wykraczająca poza M2 i sięgająca w SPEC sekcje 4 (RAG), 5.2 (world state) i 7 (portfolio) — patrz ASSUMPTIONS.md "M2.5" po pełne uzasadnienie decyzji.
+Zakres: rewizja world state z bloba `canon`/`recent_threads` na karty postaci + `world_meta` + `chapters` (5.2); dwuprzyciskowy interfejs „Zakończ ten rozdział” / „Kontynuuj” z osobnym szablonem `prompts/continue.md` (3.3, 5.1bis); ekran „Twoja książka” do czytania sklejonych rozdziałów (3.3bis) — uproszczona wycinka M4's antologii, bez filtrów/wykresów/eksportu; uproszczony RAG bez embeddingów i MMR (4.3/4.4) — chunkowanie w pamięci, retrieval przez nakładanie słów kluczowych.
+DoD:
+1. Kontynuacja („Kontynuuj”) wysyła do modelu dosłowny tekst poprzedniego fragmentu rozdziału, nie streszczenie (test na realnym HTTP + SQLite: drugi request zawiera pierwszy `story_text` verbatim).
+2. „Zakończ ten rozdział” zamyka rozdział, wylicza podsumowanie ze `summary` jego wpisów bez dodatkowego wywołania LLM, i rozdział jest widoczny jako zamknięty w `/api/authors/{slug}/book`.
+3. Karty postaci przetrwają między wpisami tego samego autora (drugi wpis/kontynuacja widzi postaci i scenerię z pierwszego) — test na realnym HTTP + SQLite, nie tylko na mocku.
+4. `character_delta` z frazą instrukcyjną lub polem >200 znaków jest odrzucana bez wywalania całych metadanych (test) — ta sama rygorystyczność co M2 DoD #3, przeniesiona na nową strukturę.
+5. Author z plikami w `authors/<slug>/corpus/` dostaje w prompcie realne fragmenty tekstu zamiast placeholdera „brak indeksu korpusu” (test na tymczasowym katalogu korpusu, nie na repo dostoevsky, które celowo nie zawiera tekstów źródłowych).
+6. Kompakcja world state i tryb serii (6.6) NIE są częścią tej iteracji — zostają w M4 zgodnie z wcześniejszą decyzją (patrz commit historii tej sesji sprzed M2.5).
+
 ### M3 — RAG i ewaluacja
-Zakres: indeksowanie, retrieval z MMR, few-shot, kontrola 8-gramów i imion, graceful degradation, `diary eval`.
+Zakres: pełne indeksowanie z embeddingami i persystencją (`diary index`), retrieval z MMR (podmienia uproszczony scoring z M2.5 bez zmiany miejsca w prompcie), kontrola 8-gramów i imion, graceful degradation, `diary eval`.
 DoD:
 1. `diary index` na przykładowym korpusie tworzy indeks inkrementalnie; ponowne uruchomienie nie przelicza istniejących plików.
 2. Retrieval zwraca k różnorodnych chunków (test MMR na syntetycznych wektorach).

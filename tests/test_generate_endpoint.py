@@ -2,7 +2,8 @@
 
 Testy w test_generation.py sprawdzały obiekty zdarzeń zwracane przez
 generate_story, więc nie widziały, co faktycznie ląduje w ciele odpowiedzi SSE.
-Tutaj asercje idą na surowe bajty, które dostaje przeglądarka.
+Tutaj asercje idą na surowe bajty, które dostaje przeglądarka — w tym na
+zapis do bazy, który teraz dzieje się w tle po stronie serwera (SPEC 3.3).
 """
 
 from __future__ import annotations
@@ -14,8 +15,23 @@ from fastapi.testclient import TestClient
 
 from diary.app.main import create_app
 from diary.core.llm.mock import MockAdapter
+from diary.core.safety.output_filter import OutputFilterVerdict
+from diary.core.settings import Settings
+from diary.core.story.metadata import StoryMetadata
 
 LONG_STORY_CHUNKS = [f"zdanie-{i} " for i in range(400)]
+
+PASSING_METADATA = StoryMetadata(
+    title="Deszcz", mood_tag="melancholia", characters_used=["Arkadij"],
+    character_delta={}, summary="Krótkie streszczenie.", tone_flags=["none"],
+)
+PASS_VERDICT = OutputFilterVerdict(verdict="pass")
+
+
+def _passing_adapter(chunks=None, **structured_overrides) -> MockAdapter:
+    structured = {StoryMetadata: PASSING_METADATA, OutputFilterVerdict: PASS_VERDICT}
+    structured.update(structured_overrides)
+    return MockAdapter(chunks=chunks, structured_responses=structured)
 
 
 def _payload(**overrides: object) -> dict:
@@ -38,11 +54,14 @@ def _payload(**overrides: object) -> dict:
 
 
 @pytest.fixture
-def client_with_mock(monkeypatch):
-    """Podmienia adapter na MockAdapter, żeby nie wychodzić do sieci."""
+def client_with_mock(monkeypatch, tmp_path):
+    """Podmienia adapter na MockAdapter i bazę na plik tymczasowy, żeby testy
+    nie wychodziły do sieci ani nie dotykały prawdziwego diary.db."""
 
     def _make(adapter: MockAdapter) -> TestClient:
         monkeypatch.setattr("diary.app.routes.build_adapter", lambda settings: adapter)
+        test_settings = Settings(db_path=str(tmp_path / "test.db"))
+        monkeypatch.setattr("diary.app.routes.get_settings", lambda: test_settings)
         return TestClient(create_app())
 
     return _make
@@ -73,7 +92,7 @@ def parse_sse(body: str) -> list[tuple[str, str]]:
 
 def test_full_story_reaches_sse_body_not_just_first_chunk(client_with_mock):
     """Regresja: całe opowiadanie musi trafić do odpowiedzi, nie tylko pierwszy fragment."""
-    adapter = MockAdapter(chunks=LONG_STORY_CHUNKS)
+    adapter = _passing_adapter(chunks=LONG_STORY_CHUNKS)
     client = client_with_mock(adapter)
 
     response = client.post("/api/generate", json=_payload())
@@ -91,7 +110,7 @@ def test_full_story_reaches_sse_body_not_just_first_chunk(client_with_mock):
 
 def test_sse_body_is_well_formed_and_events_are_separated(client_with_mock):
     """Każdy event musi być domknięty pustą linią, inaczej klient nie ma po czym ciąć."""
-    adapter = MockAdapter(chunks=["Rano ", "padał ", "deszcz."])
+    adapter = _passing_adapter(chunks=["Rano ", "padał ", "deszcz."])
     client = client_with_mock(adapter)
 
     body = client.post("/api/generate", json=_payload()).text
@@ -104,14 +123,57 @@ def test_sse_body_is_well_formed_and_events_are_separated(client_with_mock):
 
     events = parse_sse(body)
     kinds = [kind for kind, _ in events]
+    assert kinds[0] == "init"  # generation_id, do wznowienia po zerwanym połączeniu
     assert kinds.count("stage") == 5
     assert kinds.count("token") == 3
+    assert "result" in kinds
     assert kinds[-1] == "done"
+
+
+def test_result_event_carries_entry_id_and_metadata(client_with_mock):
+    adapter = _passing_adapter(chunks=["Rano ", "padał ", "deszcz."])
+    client = client_with_mock(adapter)
+
+    events = parse_sse(client.post("/api/generate", json=_payload()).text)
+    result = json.loads(next(data for kind, data in events if kind == "result"))
+
+    assert isinstance(result["entry_id"], int)
+    assert result["title"] == "Deszcz"
+    assert result["characters_used"] == ["Arkadij"]
+    assert result["safety_output_result"] == "pass"
+    assert result["banner"] is False
+    assert result["prompt_version"] >= 1
+    assert result["style_profile_version"] == 1
+
+
+def test_input_detection_logs_a_safety_event_without_user_content(client_with_mock, tmp_path):
+    """safety_events MUST NOT contain the user's own text (SPEC 6.3/7.1) —
+    only rule labels (e.g. which regex matched), useful for tuning thresholds."""
+    adapter = _passing_adapter(chunks=["Rano padał deszcz."])
+    client = client_with_mock(adapter)
+
+    payload = _payload()
+    payload["mood_input"]["sentence"] = "Chcę się zabić."
+    response = client.post("/api/generate", json=payload)
+    result = json.loads(next(data for kind, data in parse_sse(response.text) if kind == "result"))
+    assert result["banner"] is True
+
+    from diary.core.portfolio import storage
+
+    conn = storage.get_connection(str(tmp_path / "test.db"))
+    row = conn.execute(
+        "SELECT * FROM safety_events WHERE entry_id = ? AND stage = 'input_detector'", (result["entry_id"],)
+    ).fetchone()
+    conn.close()
+
+    assert row is not None
+    assert row["verdict"].startswith("triggered:")
+    assert "Chcę się zabić" not in row["verdict"]  # rule label, not the user's sentence
 
 
 def test_tokens_keep_their_whitespace_exactly(client_with_mock):
     """Spacje na brzegach fragmentów są znaczące — bez nich proza się sklei."""
-    adapter = MockAdapter(chunks=["Rano ", " padał  ", "\n\ndeszcz."])
+    adapter = _passing_adapter(chunks=["Rano ", " padał  ", "\n\ndeszcz."])
     client = client_with_mock(adapter)
 
     events = parse_sse(client.post("/api/generate", json=_payload()).text)
@@ -149,3 +211,12 @@ def test_unexpected_adapter_crash_still_produces_an_error_event(client_with_mock
 
     assert "error" in kinds, "strumień umarł bez żadnego komunikatu dla użytkownika"
     assert "done" not in kinds
+
+
+def test_unknown_author_returns_404_before_starting_any_generation(client_with_mock):
+    client = client_with_mock(MockAdapter())
+    payload = _payload()
+    payload["author_slug"] = "nie-ma-takiego-autora"
+
+    response = client.post("/api/generate", json=payload)
+    assert response.status_code == 404

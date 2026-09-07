@@ -1,0 +1,16 @@
+# SPEC 6.5 — numery pomocy dla Polski, dokładnie te wskazane w SPEC.md
+# ("dla PL wpisać po weryfikacji: 116 123, 800 70 2222, 112"). Nie zostały
+# ponownie zweryfikowane w tej sesji na żywym źródle — przed użyciem produkcyjnym
+# sprawdź aktualność (numery infolinii się zmieniają) i etykiety operatorów.
+locale: pl
+footer_text: "Gdzie szukać pomocy"
+banner_intro: >
+  Jeśli to, co teraz czujesz, jest więcej niż literacką metaforą — nie jesteś
+  z tym sam/a. Pomoc jest dostępna całą dobę:
+numbers:
+  - label: "Telefon Zaufania dla Dzieci i Młodzieży"
+    phone: "116 123"
+  - label: "Centrum Wsparcia dla Osób w Kryzysie Psychicznym"
+    phone: "800 70 2222"
+  - label: "Numer alarmowy"
+    phone: "112"

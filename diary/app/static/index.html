@@ -16,13 +16,34 @@
 
   <header class="flex items-center justify-between mb-8">
     <h1 class="text-xl font-serif tracking-wide">Dziennik literacki</h1>
-    <button @click="drawerOpen = true" class="text-2xl leading-none" title="Ustawienia" aria-label="Ustawienia">⚙</button>
+    <div class="flex items-center gap-4">
+      <button @click="openBook()" x-show="selectedAuthor" x-cloak class="text-sm underline text-stone-600">Twoja książka</button>
+      <button @click="drawerOpen = true" class="text-2xl leading-none" title="Ustawienia" aria-label="Ustawienia">⚙</button>
+    </div>
   </header>
 
-  <!-- Global error banner (e.g. bad key) -->
+  <!-- Helpline banner (SPEC 6.5): triggered by the input detector or a fallback
+       output-filter result, persists across refresh via localStorage until dismissed. -->
+  <div x-show="bannerActive && helplines" x-cloak
+       class="mb-6 rounded border border-amber-300 bg-amber-50 text-amber-900 px-4 py-3 text-sm">
+    <div class="flex justify-between items-start gap-3">
+      <p x-text="helplines?.banner_intro"></p>
+      <button @click="dismissHelplineBanner()" class="text-lg leading-none shrink-0" aria-label="Zamknij">×</button>
+    </div>
+    <ul class="mt-2 space-y-0.5">
+      <template x-for="n in (helplines?.numbers || [])" :key="n.phone">
+        <li><span x-text="n.label"></span>: <strong x-text="n.phone"></strong></li>
+      </template>
+    </ul>
+  </div>
+
+  <!-- Global error banner (e.g. bad key, dropped connection) -->
   <div x-show="errorMessage" x-cloak class="mb-6 rounded border border-red-300 bg-red-50 text-red-800 px-4 py-3 text-sm">
     <p x-text="errorMessage"></p>
-    <button @click="drawerOpen = true" class="underline mt-1">Otwórz ustawienia</button>
+    <div class="flex gap-4 mt-1">
+      <button x-show="canResume" @click="resumeGeneration()" class="underline">Wznów</button>
+      <button x-show="!canResume" @click="drawerOpen = true" class="underline">Otwórz ustawienia</button>
+    </div>
   </div>
 
   <!-- Screen 1: author picker -->
@@ -38,8 +59,8 @@
           <div class="font-semibold" x-text="a.name"></div>
           <div class="text-xs text-stone-500 mb-2" x-text="a.era"></div>
           <p class="text-sm text-stone-600" x-text="a.expect"></p>
-          <div class="text-xs mt-2" :class="a.has_index ? 'text-emerald-700' : 'text-stone-400'"
-               x-text="a.has_index ? 'indeks stylu: gotowy' : 'indeks stylu: brak (samo style card)'"></div>
+          <div class="text-xs mt-2" :class="a.has_index || a.has_corpus ? 'text-emerald-700' : 'text-stone-400'"
+               x-text="a.has_index ? 'źródło stylu: pełny indeks' : a.has_corpus ? 'źródło stylu: pliki wgrane (bez pełnego indeksu)' : 'źródło stylu: samo style card'"></div>
         </button>
       </template>
     </div>
@@ -133,58 +154,169 @@
     <div class="mb-4 text-sm text-stone-500" x-show="generating">
       <span x-text="currentStage"></span>…
     </div>
+    <p x-show="filterMessage" x-cloak class="mb-4 text-sm text-amber-700 italic" x-text="filterMessage"></p>
+
+    <h3 x-show="entryInfo && entryInfo.chapterTitle" x-cloak class="text-lg font-serif mb-2" x-text="entryInfo && entryInfo.chapterTitle"></h3>
     <article class="prose prose-stone max-w-none whitespace-pre-wrap font-serif leading-relaxed" x-text="storyText"></article>
 
     <div class="mt-8 flex flex-wrap gap-3" x-show="!generating">
-      <button @click="screen = 1; storyText = ''" class="px-4 py-2 rounded border border-stone-300">Nowy wpis</button>
-      <button @click="submitAndGenerate()" class="px-4 py-2 rounded border border-stone-300">Wygeneruj ponownie</button>
+      <button @click="endChapter()" class="px-4 py-2 rounded bg-stone-800 text-white">Zakończ ten rozdział</button>
+      <button @click="continueChapter()" class="px-4 py-2 rounded border border-stone-300">Kontynuuj</button>
     </div>
+
+    <details x-show="entryInfo && !generating" x-cloak class="mt-6 text-xs text-stone-500 border-t border-stone-200 pt-3">
+      <summary class="cursor-pointer select-none">Szczegóły (debug)</summary>
+      <dl class="mt-2 space-y-1">
+        <div><dt class="inline font-medium">Wpis:</dt> <dd class="inline" x-text="entryInfo && entryInfo.entryId"></dd></div>
+        <div><dt class="inline font-medium">Rozdział:</dt> <dd class="inline" x-text="entryInfo && entryInfo.chapterId"></dd></div>
+        <div><dt class="inline font-medium">Nastrój wg modelu:</dt> <dd class="inline" x-text="entryInfo && entryInfo.moodTag"></dd></div>
+        <div><dt class="inline font-medium">Postaci:</dt> <dd class="inline" x-text="entryInfo && (entryInfo.charactersUsed || []).join(', ') || '—'"></dd></div>
+        <div><dt class="inline font-medium">Wynik filtra wyjścia:</dt> <dd class="inline" x-text="entryInfo && entryInfo.safetyOutputResult"></dd></div>
+        <div><dt class="inline font-medium">Wersje:</dt> <dd class="inline">prompt <span x-text="entryInfo && entryInfo.promptVersion"></span>, profil stylu <span x-text="entryInfo && entryInfo.styleProfileVersion"></span></dd></div>
+      </dl>
+    </details>
+  </section>
+
+  <!-- Screen 4: "Twoja książka" — read the whole thing as continuous text -->
+  <section x-show="screen === 4" x-cloak>
+    <div class="flex justify-between items-center mb-6">
+      <h2 class="text-lg">Twoja książka — <span x-text="selectedAuthorName"></span></h2>
+      <button @click="screen = 1" class="text-sm underline text-stone-600">Zamknij</button>
+    </div>
+
+    <p x-show="bookLoading" class="text-sm text-stone-500">Wczytuję…</p>
+    <p x-show="!bookLoading && book && book.chapters.length === 0" class="text-sm text-stone-500">
+      Jeszcze nic tu nie ma — napisz pierwszy wpis.
+    </p>
+
+    <template x-for="chapter in (book ? book.chapters : [])" :key="chapter.id">
+      <article class="mb-10 pb-8 border-b border-stone-200 last:border-0">
+        <div class="flex items-baseline justify-between gap-3 mb-1">
+          <h3 class="text-lg font-serif" x-text="chapter.title || '(rozdział bez tytułu)'"></h3>
+          <span class="text-xs shrink-0" :class="chapter.status === 'open' ? 'text-amber-700' : 'text-stone-400'"
+                x-text="chapter.status === 'open' ? 'w trakcie' : 'zakończony'"></span>
+        </div>
+        <p x-show="chapter.summary" class="text-xs text-stone-400 italic mb-3" x-text="chapter.summary"></p>
+        <div class="prose prose-stone max-w-none whitespace-pre-wrap font-serif leading-relaxed"
+             x-text="chapterFullText(chapter)"></div>
+      </article>
+    </template>
   </section>
 
   <!-- Settings drawer -->
   <div x-show="drawerOpen" x-cloak class="fixed inset-0 bg-black/30 flex justify-end z-50" @click.self="drawerOpen = false">
     <div class="w-full max-w-sm bg-white h-full p-6 overflow-y-auto shadow-xl">
-      <div class="flex justify-between items-center mb-4">
+      <div class="flex justify-between items-center mb-5">
         <h2 class="text-lg">Ustawienia</h2>
-        <button @click="drawerOpen = false" class="text-xl">×</button>
+        <button @click="drawerOpen = false" class="text-xl leading-none" aria-label="Zamknij">×</button>
       </div>
 
-      <label class="block text-sm mb-1">Adres API (OpenAI-compatible)</label>
+      <h3 class="text-xs font-semibold uppercase tracking-wide text-stone-500 mb-2">Dostawca modelu</h3>
+
+      <div class="flex gap-2 mb-3">
+        <template x-for="preset in providerPresetList" :key="preset.key">
+          <button type="button" @click="applyProviderPreset(preset.key)"
+                  class="flex-1 px-2 py-1.5 rounded border text-xs"
+                  :class="activeProviderPreset === preset.key ? 'bg-stone-800 text-white border-stone-800' : 'border-stone-300 text-stone-600'"
+                  x-text="preset.label"></button>
+        </template>
+      </div>
+
+      <label class="block text-sm mb-1">Adres API</label>
       <input type="text" x-model="settings.llm_base_url" placeholder="https://api.openai.com/v1"
-             class="w-full border border-stone-300 rounded px-3 py-2 text-sm mb-4" />
+             class="w-full border border-stone-300 rounded px-3 py-2 text-sm font-mono" />
+      <p class="text-xs text-stone-400 mt-1 mb-3">
+        Musi być zgodny z API OpenAI (endpoint <code>/chat/completions</code>).
+        Puste pole = wartość domyślna z konfiguracji serwera.
+      </p>
 
       <label class="block text-sm mb-1">Klucz API</label>
-      <input type="password" x-model="settings.llm_api_key" placeholder="sk-..."
-             class="w-full border border-stone-300 rounded px-3 py-2 text-sm mb-4" />
+      <div class="relative">
+        <input :type="showApiKey ? 'text' : 'password'" x-model="settings.llm_api_key" placeholder="sk-... / AIza... / AQ...."
+               autocomplete="off"
+               class="w-full border border-stone-300 rounded px-3 py-2 pr-16 text-sm font-mono" />
+        <button type="button" @click="showApiKey = !showApiKey"
+                class="absolute inset-y-0 right-0 px-3 text-xs text-stone-500" x-text="showApiKey ? 'ukryj' : 'pokaż'"></button>
+      </div>
+      <p class="text-xs text-stone-400 mt-1 mb-3">
+        Zostaje wyłącznie w przeglądarce (localStorage) i trafia tylko do adresu API powyżej — nigdy do żadnej bazy ani logów tej aplikacji.
+      </p>
 
       <label class="block text-sm mb-1">Model (opowiadanie)</label>
-      <input type="text" x-model="settings.model_story" placeholder="gpt-4o-mini"
-             class="w-full border border-stone-300 rounded px-3 py-2 text-sm mb-4" />
+      <input type="text" x-model="settings.model_story" :placeholder="activeModelPlaceholder"
+             class="w-full border border-stone-300 rounded px-3 py-2 text-sm font-mono" />
+      <p class="text-xs text-stone-400 mt-1 mb-3" x-text="activeModelHint"></p>
 
-      <label class="block text-sm mb-1">Temperatura: <span x-text="settings.temperature"></span></label>
+      <label class="block text-sm mb-1">Model (zadania pomocnicze)</label>
+      <input type="text" x-model="settings.model_helper" placeholder="tańszy/szybszy model tego samego dostawcy"
+             class="w-full border border-stone-300 rounded px-3 py-2 text-sm font-mono" />
+      <p class="text-xs text-stone-400 mt-1 mb-5">
+        Używany do metadanych wpisu i sprawdzania treści (SPEC 5.3, 6.3) — MAY być tańszy niż model opowiadania.
+      </p>
+
+      <hr class="border-stone-200 mb-4" />
+
+      <h3 class="text-xs font-semibold uppercase tracking-wide text-stone-500 mb-2">Generowanie</h3>
+
+      <label class="block text-sm mb-1">
+        Temperatura: <span x-text="settings.temperature"></span>
+        <span class="text-stone-400" x-text="settings.temperature <= 0.4 ? '(przewidywalne)' : settings.temperature >= 1.3 ? '(bardzo swobodne)' : '(zbalansowane)'"></span>
+      </label>
       <input type="range" min="0" max="2" step="0.1" x-model.number="settings.temperature" class="w-full mb-4" />
 
       <label class="block text-sm mb-1">Język opowiadania</label>
-      <select x-model="settings.story_language" class="w-full border border-stone-300 rounded px-3 py-2 text-sm mb-4">
+      <select x-model="settings.story_language" class="w-full border border-stone-300 rounded px-3 py-2 text-sm mb-5">
         <option value="auto">auto (polski)</option>
         <option value="polsku">polski</option>
         <option value="angielsku">angielski</option>
       </select>
 
-      <p class="text-xs text-stone-400">
-        Klucz zostaje w przeglądarce (localStorage) i jest wysyłany tylko do wybranego dostawcy modelu przy każdym generowaniu — nie trafia do żadnej bazy ani logów.
-      </p>
-
-      <button @click="saveSettings(); drawerOpen = false" class="mt-4 w-full px-4 py-2 rounded bg-stone-800 text-white">Zapisz</button>
+      <div class="flex items-center gap-3">
+        <button @click="saveSettings()" class="px-4 py-2 rounded bg-stone-800 text-white text-sm">Zapisz</button>
+        <span x-show="settingsSaved" x-cloak class="text-sm text-emerald-700">Zapisano ✓</span>
+      </div>
     </div>
   </div>
 
   <footer class="mt-16 text-xs text-stone-400 border-t border-stone-200 pt-4">
-    <a href="#" class="underline">Gdzie szukać pomocy</a>
+    <button type="button" @click="showHelplinesPanel = !showHelplinesPanel" class="underline"
+            x-text="helplines ? helplines.footer_text : 'Gdzie szukać pomocy'"></button>
+    <div x-show="showHelplinesPanel" x-cloak class="mt-2 text-stone-600">
+      <p x-text="helplines?.banner_intro"></p>
+      <ul class="mt-1 space-y-0.5">
+        <template x-for="n in (helplines?.numbers || [])" :key="n.phone">
+          <li><span x-text="n.label"></span>: <strong x-text="n.phone"></strong></li>
+        </template>
+      </ul>
+    </div>
   </footer>
 </div>
 
 <script>
+// Presety dla znanych API zgodnych z OpenAI. Adapter (openai_compatible.py) jest
+// jeden dla wszystkich — to tylko skróty wypełniające adres i podpowiedź modelu,
+// żeby nie przepisywać ich ręcznie z pamięci (stąd m.in. wcześniejsza literówka
+// w adresie Gemini).
+const PROVIDER_PRESETS = {
+  openai: {
+    label: 'OpenAI',
+    base_url: 'https://api.openai.com/v1',
+    model_placeholder: 'gpt-4o-mini',
+    model_hint: 'np. gpt-4o-mini, gpt-4o, gpt-4.1-mini',
+  },
+  gemini: {
+    label: 'Google Gemini',
+    base_url: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+    model_placeholder: 'gemini-2.5-flash',
+    model_hint: 'np. gemini-2.5-flash, gemini-2.5-pro. Klucz z Google AI Studio.',
+  },
+};
+const CUSTOM_MODEL_HINT = 'Dokładna nazwa modelu zgodna z API tego dostawcy.';
+
+function normalizeUrl(url) {
+  return (url || '').trim().replace(/\/+$/, '');
+}
+
 function diaryApp() {
   return {
     screen: 1,
@@ -197,24 +329,84 @@ function diaryApp() {
     errorMessage: '',
     generating: false,
     currentStage: '',
+    filterMessage: '',
     storyText: '',
     drawerOpen: false,
+    showApiKey: false,
+    settingsSaved: false,
+    providerPresetList: Object.entries(PROVIDER_PRESETS).map(([key, p]) => ({ key, label: p.label })).concat([{ key: 'custom', label: 'Inny' }]),
     settings: {
       llm_base_url: '',
       llm_api_key: '',
       model_story: '',
+      model_helper: '',
       temperature: 0.9,
       story_language: 'auto',
     },
 
+    // M2: generation identity + server-side stream buffer (SPEC 3.3, 5.6).
+    generationId: null,
+    eventsProcessed: 0,     // count of real (non-"init") events applied so far, for resume's ?after=
+    streamEndedCleanly: false,
+    canResume: false,
+    entryInfo: null,        // set from the 'result' event once generation finishes
+    attemptStartLength: 0,  // storyText length when the current attempt's "piszę" stage began
+
+    // "Książka": Kontynuuj appends to the same open chapter instead of
+    // starting a new, independent one. null = next submit starts a new chapter.
+    pendingContinueChapterId: null,
+    book: null,
+    bookLoading: false,
+
+    // M2: helpline banner + footer (SPEC 6.5). bannerActive persists across
+    // refresh via localStorage — it was triggered by an entry, not a page state.
+    helplines: null,
+    bannerActive: false,
+    showHelplinesPanel: false,
+
+    get activeProviderPreset() {
+      const url = normalizeUrl(this.settings.llm_base_url);
+      if (!url) return null;
+      for (const [key, preset] of Object.entries(PROVIDER_PRESETS)) {
+        if (url === normalizeUrl(preset.base_url)) return key;
+      }
+      return 'custom';
+    },
+
+    get activeModelPlaceholder() {
+      return PROVIDER_PRESETS[this.activeProviderPreset]?.model_placeholder || 'gpt-4o-mini';
+    },
+
+    get activeModelHint() {
+      return PROVIDER_PRESETS[this.activeProviderPreset]?.model_hint || CUSTOM_MODEL_HINT;
+    },
+
+    get selectedAuthorName() {
+      const author = this.authors.find(a => a.slug === this.selectedAuthor);
+      return author ? author.name : this.selectedAuthor;
+    },
+
+    applyProviderPreset(key) {
+      const preset = PROVIDER_PRESETS[key];
+      if (!preset) return; // "Inny" — zostawiamy pola takie, jakie użytkownik już wpisał
+      this.settings.llm_base_url = preset.base_url;
+      this.settings.model_story = preset.model_placeholder;
+    },
+
     async init() {
       this.loadSettings();
-      const [authorsRes, optionsRes] = await Promise.all([
+      try {
+        this.bannerActive = localStorage.getItem('diary_helpline_banner') === '1';
+      } catch (e) { /* private browsing etc. — banner just won't persist */ }
+
+      const [authorsRes, optionsRes, helplinesRes] = await Promise.all([
         fetch('/api/authors'),
         fetch('/api/form-options'),
+        fetch('/api/helplines'),
       ]);
       this.authors = await authorsRes.json();
       this.formOptions = await optionsRes.json();
+      this.helplines = await helplinesRes.json();
 
       const remembered = localStorage.getItem('diary_selected_author');
       if (remembered && this.authors.some(a => a.slug === remembered)) {
@@ -222,6 +414,33 @@ function diaryApp() {
       } else if (this.authors.length > 0) {
         this.selectedAuthor = this.authors[0].slug;
       }
+    },
+
+    activateHelplineBanner() {
+      this.bannerActive = true;
+      try { localStorage.setItem('diary_helpline_banner', '1'); } catch (e) { /* ignore */ }
+    },
+
+    dismissHelplineBanner() {
+      this.bannerActive = false;
+      try { localStorage.removeItem('diary_helpline_banner'); } catch (e) { /* ignore */ }
+    },
+
+    async openBook() {
+      if (!this.selectedAuthor) return;
+      this.screen = 4;
+      this.bookLoading = true;
+      try {
+        const response = await fetch(`/api/authors/${this.selectedAuthor}/book`);
+        this.book = await response.json();
+      } catch (e) {
+        this.book = null;
+      }
+      this.bookLoading = false;
+    },
+
+    chapterFullText(chapter) {
+      return chapter.entries.map(e => e.story_text).join('\n\n');
     },
 
     loadSettings() {
@@ -232,7 +451,12 @@ function diaryApp() {
     },
 
     saveSettings() {
+      this.settings.llm_base_url = this.settings.llm_base_url.trim();
+      this.settings.llm_api_key = this.settings.llm_api_key.trim();
+      this.settings.model_story = this.settings.model_story.trim();
       localStorage.setItem('diary_settings', JSON.stringify(this.settings));
+      this.settingsSaved = true;
+      setTimeout(() => { this.settingsSaved = false; }, 2000);
     },
 
     selectAuthor(slug) {
@@ -275,22 +499,64 @@ function diaryApp() {
           llm_base_url: this.settings.llm_base_url || null,
           llm_api_key: this.settings.llm_api_key || null,
           model_story: this.settings.model_story || null,
+          model_helper: this.settings.model_helper || null,
           temperature: this.settings.temperature ?? null,
           story_language: this.settings.story_language || null,
         },
+        continue_chapter_id: this.pendingContinueChapterId,
       };
     },
 
-    async submitAndGenerate() {
+    // "Zakończ ten rozdział" (książka, punkt 1): closes the chapter this
+    // entry belongs to, then behaves like starting fresh.
+    async endChapter() {
+      const chapterId = this.entryInfo && this.entryInfo.chapterId;
+      if (chapterId) {
+        try {
+          await fetch(`/api/chapters/${chapterId}/close`, { method: 'POST' });
+        } catch (e) {
+          // best-effort: closing failed (offline?), but the entry itself is
+          // already saved server-side — don't block the user on this.
+        }
+      }
+      this.startNewEntry();
+    },
+
+    // "Kontynuuj" (książka, punkt 1): appends to the SAME open chapter,
+    // reusing the mood just submitted — not a new, independent entry.
+    async continueChapter() {
+      const chapterId = this.entryInfo && this.entryInfo.chapterId;
+      if (!chapterId) return;
+      this.pendingContinueChapterId = chapterId;
+      if (this.storyText) this.storyText += '\n\n';
+      await this.submitAndGenerate({ continuing: true });
+    },
+
+    startNewEntry() {
+      this.screen = 1;
+      this.storyText = '';
+      this.entryInfo = null;
+      this.pendingContinueChapterId = null;
+    },
+
+    async submitAndGenerate({ continuing = false } = {}) {
       this.formError = this.validateForm();
       if (this.formError) return;
       this.errorMessage = '';
-      this.storyText = '';
+      if (!continuing) this.storyText = '';
+      this.filterMessage = '';
       this.generating = true;
       this.currentStage = 'przygotowuję';
       this.screen = 3;
+      this.entryInfo = null;
+      this.generationId = null;
+      this.eventsProcessed = 0;
+      this.streamEndedCleanly = false;
+      this.canResume = false;
+      this.attemptStartLength = this.storyText.length;
 
       const payload = this.buildPayload();
+      this.pendingContinueChapterId = null; // consumed — continueChapter() sets it again if needed
 
       try {
         const response = await fetch('/api/generate', {
@@ -301,15 +567,70 @@ function diaryApp() {
         if (!response.ok || !response.body) {
           throw new Error('Nie udało się połączyć z serwerem.');
         }
-        await this.consumeSse(response.body);
+        await this.readSseStream(response.body);
       } catch (e) {
+        this.handleStreamInterrupted(e);
+        return;
+      }
+      this.finishAfterStream();
+    },
+
+    // Server-side stream buffer (SPEC 3.3, 5.6): a dropped connection resumes
+    // from generationId + eventsProcessed instead of regenerating from scratch.
+    // The background generation keeps running server-side either way.
+    async resumeGeneration() {
+      if (!this.generationId) return;
+      this.errorMessage = '';
+      this.canResume = false;
+      this.generating = true;
+
+      try {
+        const response = await fetch(`/api/generate/${this.generationId}/resume?after=${this.eventsProcessed}`);
+        if (!response.ok || !response.body) {
+          throw new Error('Nie udało się wznowić generowania.');
+        }
+        await this.readSseStream(response.body);
+      } catch (e) {
+        this.handleStreamInterrupted(e);
+        return;
+      }
+      this.finishAfterStream();
+    },
+
+    handleStreamInterrupted(e) {
+      this.generating = false;
+      if (this.generationId && !this.streamEndedCleanly) {
+        // Connection dropped mid-generation, not a real failure — the
+        // background task on the server is still running (or already
+        // finished into its buffer). Offer to resume instead of restarting.
+        this.canResume = true;
+        this.errorMessage = 'Połączenie zostało przerwane w trakcie generowania.';
+      } else {
         this.errorMessage = e.message || 'Coś poszło nie tak.';
-        this.generating = false;
         this.screen = 2; // keep the filled form, do not lose it
       }
     },
 
-    async consumeSse(body) {
+    finishAfterStream() {
+      this.generating = false;
+
+      if (!this.streamEndedCleanly) {
+        // The response body ended without an 'error' or 'done' event —
+        // the server closed the connection mid-generation.
+        this.canResume = true;
+        this.errorMessage = 'Połączenie zostało przerwane w trakcie generowania.';
+        return;
+      }
+
+      // 200 OK i pusty ekran to nie jest sukces — powiedz o tym wprost,
+      // zamiast zostawiać użytkownika z samymi przyciskami.
+      if (!this.errorMessage && !this.storyText.trim()) {
+        this.errorMessage = 'Model nie zwrócił żadnego tekstu. Sprawdź klucz API, adres API i nazwę modelu w ustawieniach (ikona ⚙).';
+        this.screen = 2;
+      }
+    },
+
+    async readSseStream(body) {
       const reader = body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -346,15 +667,6 @@ function diaryApp() {
       drain();
       // ostatni event bywa bez zamykającej pustej linii
       if (buffer.trim()) this.handleSseEvent(buffer);
-
-      this.generating = false;
-
-      // 200 OK i pusty ekran to nie jest sukces — powiedz o tym wprost,
-      // zamiast zostawiać użytkownika z samymi przyciskami.
-      if (!this.errorMessage && !this.storyText.trim()) {
-        this.errorMessage = 'Model nie zwrócił żadnego tekstu. Sprawdź klucz API, adres API i nazwę modelu w ustawieniach (ikona ⚙).';
-        this.screen = 2;
-      }
     },
 
     handleSseEvent(rawEvent) {
@@ -380,15 +692,45 @@ function diaryApp() {
         return; // jeden uszkodzony event nie może ubić całego strumienia
       }
 
+      if (eventType === 'init') {
+        this.generationId = payload.generation_id;
+        return; // one-off, not counted toward the resume offset
+      }
+      this.eventsProcessed += 1;
+
       if (eventType === 'stage') {
         this.currentStage = payload.stage;
+        // Fires at the start of every attempt, including retries after a
+        // filter rejection — marks where THIS attempt's text begins, so a
+        // rejection only wipes this attempt, never a continuation's prior
+        // (already-saved) chapter text.
+        if (payload.stage === 'piszę') this.attemptStartLength = this.storyText.length;
       } else if (eventType === 'token') {
+        this.filterMessage = '';
         this.storyText += payload.text;
+      } else if (eventType === 'filter_rejected') {
+        this.storyText = this.storyText.slice(0, this.attemptStartLength);
+        this.filterMessage = payload.message;
+      } else if (eventType === 'result') {
+        this.entryInfo = {
+          entryId: payload.entry_id,
+          chapterId: payload.chapter_id,
+          chapterTitle: payload.chapter_title,
+          title: payload.title,
+          moodTag: payload.mood_tag,
+          charactersUsed: payload.characters_used,
+          safetyOutputResult: payload.safety_output_result,
+          promptVersion: payload.prompt_version,
+          styleProfileVersion: payload.style_profile_version,
+        };
+        if (payload.banner) this.activateHelplineBanner();
       } else if (eventType === 'error') {
         this.errorMessage = payload.message;
+        this.streamEndedCleanly = true;
         this.generating = false;
         this.screen = 2; // form stays filled
       } else if (eventType === 'done') {
+        this.streamEndedCleanly = true;
         this.generating = false;
       }
     },
