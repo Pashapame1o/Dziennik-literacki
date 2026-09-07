@@ -21,16 +21,16 @@ NARRATOR_TEMPLATE_PATH = Path(__file__).resolve().parents[3] / "prompts" / "narr
 CONTINUE_TEMPLATE_PATH = Path(__file__).resolve().parents[3] / "prompts" / "continue.md"
 
 NO_RETRIEVAL_PLACEHOLDER = (
-    "(brak indeksu korpusu dla tego autora — opieram się wyłącznie na opisie stylu powyżej)"
+    "(no corpus index for this author — relying solely on the style description above)"
 )
 
 SafetyLevel = Literal["baseline", "reinforced"]
 
 # Baseline safety rules (SPEC 6.4), always included.
 DEFAULT_SAFETY_RULES = (
-    "- Nie gloryfikujesz ani nie estetyzujesz krzywdy. Nie opisujesz metod krzywdy. "
-    "Nie przedstawiasz odejścia jako rozwiązania ani ulgi.\n"
-    "- Trudne emocje mogą być przeżyte w pełni, bez pocieszenia i morału na siłę."
+    "- You do not glorify or aestheticize harm. You do not describe methods of harm. "
+    "You do not present leaving as a solution or as relief.\n"
+    "- Difficult emotions may be fully experienced, without forced comfort or a moral."
 )
 
 # Reinforced variant (SPEC 6.4), used when the input detector (6.2) or the
@@ -38,10 +38,10 @@ DEFAULT_SAFETY_RULES = (
 # Adds to the baseline rather than replacing it — 6.1 calls this a fourth,
 # soft layer that reinforces the other three, not a substitute for them.
 REINFORCED_SAFETY_RULES = DEFAULT_SAFETY_RULES + (
-    "\n- Postać może przeżywać ciemność w pełni, bez pocieszenia i bez morału.\n"
-    "- W scenie jest obecna jedna postać z kanonu, która po prostu jest — nie moralizuje, "
-    "nie radzi, nie wygłasza pocieszeń, ale nie zostawia bohatera samego.\n"
-    "- Bez fałszywego optymizmu, ale nie zamykasz drzwi."
+    "\n- The protagonist may fully experience the darkness, without comfort and without a moral.\n"
+    "- One character from the canon is present in the scene, simply being there — not moralizing, "
+    "not advising, not offering comfort, but not leaving the protagonist alone.\n"
+    "- No false optimism, but do not close the door."
 )
 
 
@@ -69,7 +69,7 @@ def _read_prompt_version(path: Path) -> int:
     raw = path.read_text(encoding="utf-8")
     match = _PROMPT_VERSION_RE.search(raw)
     if not match:
-        raise ValueError(f"{path} nie ma nagłówka '# prompt_version: N'.")
+        raise ValueError(f"{path} has no '# prompt_version: N' header.")
     return int(match.group(1))
 
 
@@ -83,10 +83,16 @@ def get_continuation_prompt_version() -> int:
     return _read_prompt_version(CONTINUE_TEMPLATE_PATH)
 
 
+# Settings.story_language stores "auto" | "polsku" | "angielsku" (the drawer's
+# internal option values, unrelated to prompt template language) — mapped here
+# to the English language name the (now-English) prompt templates expect.
+_STORY_LANGUAGE_NAMES = {"polsku": "Polish", "angielsku": "English"}
+
+
 def resolve_story_language(story_language: str) -> str:
     if story_language == "auto":
-        return "polsku"
-    return story_language
+        return "Polish"
+    return _STORY_LANGUAGE_NAMES.get(story_language, story_language)
 
 
 def render_retrieved_chunks(chunks: list[Chunk] | None) -> str:

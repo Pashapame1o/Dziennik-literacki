@@ -71,27 +71,29 @@ def has_index(slug: str) -> bool:
 
 def render_style_card(profile: AuthorProfile) -> str:
     """Renders profile.yaml fields into the readable style-card text used as
-    the STYL (szkielet) layer of the prompt (SPEC 5.1 layer 2)."""
+    the STYLE (skeleton) layer of the prompt (SPEC 5.1 layer 2). The labels
+    here are ours (English); the values come from profile.yaml and stay in
+    whatever language that author's voice was written in (Polish for now)."""
     lines = [
-        f"Epoka i miejsce: {profile.era}",
-        f"Składnia: {profile.voice.syntax}",
-        f"Rytm: {profile.voice.rhythm}",
-        f"Długość zdań: {profile.voice.sentence_length}",
-        f"Monolog wewnętrzny: {profile.voice.inner_monologue}",
-        f"Ironia narratora: {profile.voice.narrator_irony}",
-        f"Natura jako lustro stanu: {profile.voice.nature_as_mirror}",
+        f"Era and setting: {profile.era}",
+        f"Syntax: {profile.voice.syntax}",
+        f"Rhythm: {profile.voice.rhythm}",
+        f"Sentence length: {profile.voice.sentence_length}",
+        f"Inner monologue: {profile.voice.inner_monologue}",
+        f"Narrator's irony: {profile.voice.narrator_irony}",
+        f"Nature as a mirror of state: {profile.voice.nature_as_mirror}",
     ]
     if profile.default_setting_hints:
-        lines.append("Typowa sceneria: " + "; ".join(profile.default_setting_hints))
+        lines.append("Typical setting: " + "; ".join(profile.default_setting_hints))
     if profile.devices:
-        lines.append("Środki stylistyczne: " + "; ".join(profile.devices))
+        lines.append("Stylistic devices: " + "; ".join(profile.devices))
     if profile.themes:
-        lines.append("Motywy: " + "; ".join(profile.themes))
+        lines.append("Themes: " + "; ".join(profile.themes))
     if profile.character_archetypes:
-        lines.append("Archetypy postaci: " + "; ".join(profile.character_archetypes))
+        lines.append("Character archetypes: " + "; ".join(profile.character_archetypes))
     if profile.lexicon_hints:
         for lang, words in profile.lexicon_hints.items():
-            lines.append(f"Słownictwo ({lang}): " + "; ".join(words))
+            lines.append(f"Vocabulary ({lang}): " + "; ".join(words))
     if profile.avoid:
-        lines.append("Unikaj: " + "; ".join(profile.avoid))
+        lines.append("Avoid: " + "; ".join(profile.avoid))
     return "\n".join(lines)

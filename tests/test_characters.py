@@ -21,7 +21,7 @@ from diary.core.story.characters import (
 
 
 def test_empty_state_renders_first_entry_placeholder():
-    assert "pierwszy wpis" in render_characters_brief([], WorldMeta())
+    assert "first entry" in render_characters_brief([], WorldMeta())
 
 
 def test_populated_state_renders_names_roles_status_relationships():

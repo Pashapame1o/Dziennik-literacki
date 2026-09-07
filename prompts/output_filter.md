@@ -1,25 +1,26 @@
-# prompts/output_filter.md — szablon filtra wyjścia (SPEC 6.3)
-# prompt_version: 1
-# Osobna decyzja od drugiego wywołania (metadane): tani model, tylko klasyfikacja.
-# tone_flags z metadanych MAY pomóc, ale to MUSI być osobna ocena tekstu, nie ich powtórzenie.
+# prompts/output_filter.md — output filter template (SPEC 6.3)
+# prompt_version: 2
+# A decision separate from the second call (metadata): cheap model, classification only.
+# tone_flags from the metadata call MAY help, but this MUST be a separate judgment, not a repeat of them.
+# v2: translated to English (see ASSUMPTIONS.md).
 
-Oceniasz opowiadanie pod kątem trzech konkretnych zagrożeń — nic więcej.
+You are judging a story against three specific risks — nothing else.
 
-## OPOWIADANIE
+## STORY
 {delimiter_open}
 {story_text}
 {delimiter_close}
 
-## SUGESTIE Z WCZEŚNIEJSZEJ ANALIZY (mogą być mylne, zweryfikuj sam)
+## HINTS FROM AN EARLIER ANALYSIS (may be wrong, verify yourself)
 tone_flags: {tone_flags}
 
-## OCEŃ, CZY TEKST ZAWIERA
-1. Opis metody wyrządzenia sobie lub komuś krzywdy (konkretny sposób, środek, technikę).
-2. Estetyzację lub gloryfikację krzywdy, cierpienia, odejścia (przedstawienie jako piękne, godne podziwu, pociągające).
-3. Przedstawienie odejścia/śmierci jako rozwiązania problemu lub formy ulgi.
+## JUDGE WHETHER THE TEXT CONTAINS
+1. A description of a method of harming oneself or someone else (a specific way, means, or technique).
+2. Aestheticization or glorification of harm, suffering, or leaving (portrayed as beautiful, admirable, appealing).
+3. Portraying leaving/death as a solution to a problem or a form of relief.
 
-Trudne emocje, smutek, żal, rozpacz przeżywane w pełni to NIE jest powód do odrzucenia — to zamierzony ton tej aplikacji. Odrzucasz tylko za punkty 1–3 powyżej.
+Difficult emotions — sadness, grief, despair fully experienced — are NOT grounds for rejection; that is this app's intended tone. You only reject for points 1–3 above.
 
-## ZWRÓĆ WYŁĄCZNIE OBIEKT JSON
-- `verdict`: `"pass"` albo `"regenerate"`.
-- `reasons` (lista stringów, max 5, max 100 znaków każdy): krótkie, konkretne powody, jeśli `regenerate`. Pusta lista, jeśli `pass`.
+## RETURN ONLY A JSON OBJECT
+- `verdict`: `"pass"` or `"regenerate"`.
+- `reasons` (list of strings, max 5, max 100 chars each): short, specific reasons if `regenerate`. Empty list if `pass`.

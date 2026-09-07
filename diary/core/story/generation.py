@@ -36,13 +36,13 @@ from diary.core.style.profile import AuthorProfile
 
 logger = logging.getLogger(__name__)
 
-# Generyczne, treściowo puste domykacze tury. Cała treść zadania żyje w system
-# prompcie — te komunikaty tylko go wyzwalają. Bez tego niektóre bramki
-# OpenAI-compatible (np. Gemini) odrzucają request kodem 400: pod spodem
-# mapują system → systemInstruction, a resztę wiadomości → contents, i
-# wymagają co najmniej jednej wiadomości spoza roli system.
-USER_TURN_TRIGGER = "Napisz teraz opowiadanie zgodnie z powyższymi wytycznymi."
-CONTINUATION_USER_TURN_TRIGGER = "Kontynuuj dokładnie od miejsca, w którym urwał się poprzedni fragment."
+# Generic, content-free turn closers. All of the actual task content lives in
+# the system prompt — these messages only trigger it. Without this, some
+# OpenAI-compatible gateways (e.g. Gemini) reject the request with a 400:
+# under the hood they map system -> systemInstruction and everything else ->
+# contents, and require at least one message outside the system role.
+USER_TURN_TRIGGER = "Write the story now, following the guidelines above."
+CONTINUATION_USER_TURN_TRIGGER = "Continue exactly from where the previous fragment left off."
 
 Stage = Literal[
     "dobieram fragmenty stylu",
@@ -213,10 +213,10 @@ async def generate_story(
             yield ErrorEvent(str(exc))
             return
         except Exception:  # noqa: BLE001
-            # Nic nie może zniknąć po cichu w środku strumienia: bez tego wyjątek
-            # inny niż LLMError ubijał odpowiedź SSE w połowie, a przeglądarka
-            # widziała tylko urwany tekst bez żadnego komunikatu.
-            logger.exception("Nieoczekiwany błąd podczas generowania opowiadania")
+            # Nothing may vanish silently mid-stream: without this, an exception
+            # other than LLMError killed the SSE response halfway through, and
+            # the browser just saw a cut-off text with no message at all.
+            logger.exception("Unexpected error while generating the story")
             yield ErrorEvent("Nieoczekiwany błąd podczas generowania. Szczegóły w logach serwera.")
             return
 

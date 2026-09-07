@@ -51,11 +51,11 @@ class CharacterValidationError(ValueError):
 
 def check_safe_text(value: str, *, max_length: int = FIELD_MAX_LEN) -> str:
     if len(value) > max_length:
-        raise CharacterValidationError(f"Pole przekracza limit {max_length} znaków.")
+        raise CharacterValidationError(f"Field exceeds the {max_length}-character limit.")
     if any(p.search(value) for p in _INSTRUCTION_PATTERNS):
-        raise CharacterValidationError("Pole zawiera frazę instrukcyjną — odrzucone.")
+        raise CharacterValidationError("Field contains an instruction-like phrase — rejected.")
     if any(marker in value for marker in _DELIMITER_MARKERS):
-        raise CharacterValidationError("Pole zawiera znaki ogranicznika — odrzucone.")
+        raise CharacterValidationError("Field contains delimiter characters — rejected.")
     return value
 
 
@@ -103,7 +103,7 @@ class CharacterCard(BaseModel):
     def _traits_safe_and_capped(cls, value: list[str]) -> list[str]:
         checked = [check_safe_text(t, max_length=60) for t in value]
         if len(checked) > MAX_TRAITS_PER_CHARACTER:
-            raise CharacterValidationError(f"Maksymalnie {MAX_TRAITS_PER_CHARACTER} cech na postać.")
+            raise CharacterValidationError(f"At most {MAX_TRAITS_PER_CHARACTER} traits per character.")
         return checked
 
 
@@ -210,15 +210,15 @@ def render_characters_brief(characters: list[CharacterCard], world_meta: WorldMe
     layer — compact, structured, predictable size (unlike the old blob)."""
     if not characters and world_meta.is_empty:
         return (
-            "(brak zapisanego świata — to pierwszy wpis z tym autorem, wymyśl alter ego, "
-            "postaci poboczne i scenerię od zera)"
+            "(no saved world yet — this is the first entry with this author, invent an alter ego, "
+            "supporting characters, and a setting from scratch)"
         )
 
     lines: list[str] = []
     if world_meta.setting:
-        lines.append(f"Sceneria: {world_meta.setting}")
+        lines.append(f"Setting: {world_meta.setting}")
     if world_meta.era:
-        lines.append(f"Epoka: {world_meta.era}")
+        lines.append(f"Era: {world_meta.era}")
 
     for card in characters:
         tag = " (alter ego)" if card.is_alter_ego else ""
@@ -229,9 +229,9 @@ def render_characters_brief(characters: list[CharacterCard], world_meta: WorldMe
         if card.status:
             details.append(f"status: {card.status}")
         if card.traits:
-            details.append("cechy: " + ", ".join(card.traits))
+            details.append("traits: " + ", ".join(card.traits))
         if card.relationships:
-            details.append("relacje: " + "; ".join(f"{r.name} ({r.relation})" for r in card.relationships))
+            details.append("relationships: " + "; ".join(f"{r.name} ({r.relation})" for r in card.relationships))
         suffix = f": {'; '.join(details)}" if details else ""
         lines.append(f"- {card.name}{tag}{lock}{suffix}")
 

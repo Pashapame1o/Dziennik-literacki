@@ -308,7 +308,7 @@ async def _run_generation(generation_id: str, payload: GenerateRequest, settings
         finally:
             conn.close()
     except Exception:  # noqa: BLE001
-        logger.exception("Nieoczekiwany błąd generacji w tle (generation_id=%s)", generation_id)
+        logger.exception("Unexpected error in background generation (generation_id=%s)", generation_id)
         buffer.append("error", json.dumps({"message": "Nieoczekiwany błąd serwera. Szczegóły w logach."}))
     finally:
         buffer.mark_finished()
@@ -339,12 +339,13 @@ async def generate(payload: GenerateRequest) -> EventSourceResponse:
 
     overrides = payload.overrides.model_dump(exclude_none=True)
     if "model_story" in overrides and "model_helper" not in overrides:
-        # Bez tego, zmiana samego "Model (opowiadanie)" na innego dostawcę
-        # (np. Gemini) zostawiała model_helper na domyślnym "gpt-4o-mini" z
-        # bazowych Settings — metadane/filtr wyjścia (oba na model_helper)
-        # leciałyby pod ten sam base_url z nazwą modelu z zupełnie innego
-        # providera i dostawałyby 400. Domyślnie: ten sam model co opowiadanie,
-        # użytkownik może to nadpisać osobno w drawerze, jeśli chce taniej.
+        # Without this, changing only "Model (opowiadanie)" to a different
+        # provider (e.g. Gemini) left model_helper on the hardcoded
+        # "gpt-4o-mini" from base Settings — the metadata/output-filter calls
+        # (both on model_helper) would then hit that same base_url with a
+        # model name from a completely different provider and get a 400.
+        # Default: same model as the story; the user can still override it
+        # separately in the drawer if they want something cheaper.
         overrides["model_helper"] = overrides["model_story"]
     effective_settings = get_settings().model_copy(update=overrides)
 

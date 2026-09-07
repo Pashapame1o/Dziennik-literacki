@@ -51,7 +51,7 @@ def safe_parse_delta(raw: dict) -> CharacterCardDelta:
     try:
         return CharacterCardDelta.model_validate(raw)
     except ValidationError:
-        logger.warning("Odrzucono character_delta: nie przeszła walidacji (SPEC 5.2).")
+        logger.warning("Rejected character_delta: failed validation (SPEC 5.2).")
         return CharacterCardDelta()
 
 

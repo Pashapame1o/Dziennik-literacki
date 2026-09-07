@@ -31,13 +31,13 @@ def test_layer_order_matches_narrator_template():
     profile = load_author_profile("dostoevsky")
     prompt = build_prompt(profile=profile, mood_input=_sample_mood_input())
 
-    role_idx = prompt.find("narratorem piszącym w stylu")
-    style_idx = prompt.find("## STYL")
-    chunks_idx = prompt.find("## WZORCE STYLU")
-    world_idx = prompt.find("## ŚWIAT TEGO DZIENNIKA")
-    narration_idx = prompt.find("## ZASADY NARRACJI")
-    safety_idx = prompt.find("## ZASADY BEZPIECZEŃSTWA")
-    data_idx = prompt.find("## DANE WEJŚCIOWE")
+    role_idx = prompt.find("narrator writing in the style of")
+    style_idx = prompt.find("## STYLE (")
+    chunks_idx = prompt.find("## STYLE PATTERNS")
+    world_idx = prompt.find("## THE WORLD OF THIS DIARY")
+    narration_idx = prompt.find("## NARRATIVE RULES")
+    safety_idx = prompt.find("## SAFETY RULES")
+    data_idx = prompt.find("## TODAY'S INPUT")
     format_idx = prompt.find("## FORMAT")
 
     indices = (role_idx, style_idx, chunks_idx, world_idx, narration_idx, safety_idx, data_idx, format_idx)
@@ -86,8 +86,8 @@ def test_missing_index_and_characters_are_explicit_placeholders():
     profile = load_author_profile("dostoevsky")
     prompt = build_prompt(profile=profile, mood_input=_sample_mood_input())
 
-    assert "brak indeksu korpusu" in prompt
-    assert "brak zapisanego świata" in prompt
+    assert "no corpus index" in prompt
+    assert "no saved world yet" in prompt
 
 
 def test_existing_characters_are_rendered_into_the_prompt():
@@ -104,7 +104,7 @@ def test_existing_characters_are_rendered_into_the_prompt():
     assert "Arkadij Władymirowicz" in prompt
     assert "Ludmiła Iwanowna" in prompt
     assert "Petersburg" in prompt
-    assert "brak zapisanego świata" not in prompt
+    assert "no saved world yet" not in prompt
 
 
 def test_reinforced_safety_level_adds_to_baseline_without_dropping_it():
@@ -112,10 +112,10 @@ def test_reinforced_safety_level_adds_to_baseline_without_dropping_it():
     baseline = build_prompt(profile=profile, mood_input=_sample_mood_input(), safety_level="baseline")
     reinforced = build_prompt(profile=profile, mood_input=_sample_mood_input(), safety_level="reinforced")
 
-    assert "Nie gloryfikujesz ani nie estetyzujesz krzywdy" in baseline
-    assert "Nie gloryfikujesz ani nie estetyzujesz krzywdy" in reinforced
-    assert "nie zostawia bohatera samego" not in baseline
-    assert "nie zostawia bohatera samego" in reinforced
+    assert "You do not glorify or aestheticize harm" in baseline
+    assert "You do not glorify or aestheticize harm" in reinforced
+    assert "not leaving the protagonist alone" not in baseline
+    assert "not leaving the protagonist alone" in reinforced
 
 
 def test_retrieved_chunks_are_rendered_when_present():
@@ -125,7 +125,7 @@ def test_retrieved_chunks_are_rendered_when_present():
 
     assert "Fragment stylu autora." in prompt
     assert "ksiazka.txt" in prompt
-    assert "brak indeksu korpusu" not in prompt
+    assert "no corpus index" not in prompt
 
 
 # --- prompts/continue.md ---
@@ -147,8 +147,8 @@ def test_continuation_prompt_instructs_continuing_not_starting_new_scene():
     prompt = build_continuation_prompt(
         profile=profile, mood_input=_sample_mood_input(), chapter_tail_text="Fragment.",
     )
-    assert "NIE jest nowe" in prompt or "nie jest nowe" in prompt.lower()
-    assert "kontynuujesz" in prompt.lower()
+    assert "NOT a new, independent story" in prompt
+    assert "continue" in prompt.lower()
 
 
 def test_continuation_prompt_uses_two_independent_delimiters():

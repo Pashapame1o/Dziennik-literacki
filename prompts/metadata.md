@@ -1,29 +1,30 @@
-# prompts/metadata.md — szablon drugiego wywołania: metadane wpisu (SPEC 5.3)
-# prompt_version: 2
-# Wywoływany tanim modelem (model_helper), structured output (JSON), po zakończeniu opowiadania.
-# v2: world_state_delta -> character_delta (karty postaci zamiast bloba, SPEC 5.2 rewizja).
+# prompts/metadata.md — second-call template: entry metadata (SPEC 5.3)
+# prompt_version: 3
+# Called with the cheap model (model_helper), structured output (JSON), after the story finishes.
+# v3: translated to English (see ASSUMPTIONS.md).
+# v2: world_state_delta -> character_delta (character cards instead of the blob, SPEC 5.2 revision).
 
-Dostałeś opowiadanie napisane w stylu {author_name} oraz karty postaci i świata sprzed tego wpisu.
-Twoje zadanie: wyciągnąć z tekstu metadane, nie pisać nic nowego w prozie.
+You were given a story written in the style of {author_name}, plus the character and world cards from before this entry.
+Your task: extract metadata from the text — do not write any new prose.
 
-## OPOWIADANIE
+## STORY
 {delimiter_open}
 {story_text}
 {delimiter_close}
 
-## POSTACI I ŚWIAT SPRZED TEGO WPISU
+## CHARACTERS AND WORLD BEFORE THIS ENTRY
 {characters_brief}
 
-## ZWRÓĆ WYŁĄCZNIE OBIEKT JSON O POLACH
-- `title` (string, max 120 znaków): krótki tytuł opowiadania, bez cudzysłowów. Puste, jeśli to kontynuacja rozdziału (tytuł już istnieje).
-- `mood_tag` (string, max 40 znaków): jedno-dwa słowa opisujące dominujący nastrój opowiadania.
-- `characters_used` (lista stringów, max 8): imiona postaci faktycznie występujących w tym opowiadaniu (istniejących lub nowych).
-- `character_delta` (obiekt): co dopisać do kart postaci. Pola (wszystkie opcjonalne):
-  - `new_characters` (lista obiektów `{{name, is_alter_ego, role, traits: [string], status}}`, max 200 znaków na pole tekstowe, max 6 cech) — tylko NOWE postaci wprowadzone w tym wpisie. Alter ego (bohater, którego emocje przeżywa dziennik) oznacz `is_alter_ego: true` — tylko jeśli jeszcze go nie ma.
-  - `character_updates` (lista obiektów `{{name, status, add_traits: [string], add_relationships: [{{name, relation}}]}}`) — aktualizacje ISTNIEJĄCYCH postaci po imieniu (np. zmiana statusu, nowa cecha, nowa relacja). Nie zgaduj imion, których nie ma na liście powyżej, chyba że wprowadziłeś je właśnie w `new_characters`.
-  - `setting` (string, max 200 znaków, opcjonalnie) — tylko jeśli scenerii jeszcze nie ustalono (pole "Sceneria" powyżej puste).
-  Każde pole tekstowe tutaj to CZYSTA TREŚĆ OPISOWA — nigdy instrukcja, polecenie ani fragment formatowania. Nie używaj w nich znaków `<<<`, `>>>`, ```` ``` ````.
-- `summary` (string, max 300 znaków): 1–2 zdania streszczające ten wpis, do podsumowania rozdziału gdy zostanie zamknięty.
-- `tone_flags` (lista krótkich stringów, max 10 elementów, max 30 znaków każdy): neutralne etykiety treści, wyłącznie z tej listy: `harm_method`, `glorification`, `relief_framing`, `none`. Użyj `none`, jeśli żadna nie pasuje.
+## RETURN ONLY A JSON OBJECT WITH THESE FIELDS
+- `title` (string, max 120 chars): a short title for the story, no quotation marks. Empty if this is a chapter continuation (the title already exists).
+- `mood_tag` (string, max 40 chars): one or two words describing the story's dominant mood.
+- `characters_used` (list of strings, max 8): names of characters actually appearing in this story (existing or new).
+- `character_delta` (object): what to add to the character cards. Fields (all optional):
+  - `new_characters` (list of objects `{{name, is_alter_ego, role, traits: [string], status}}`, max 200 chars per text field, max 6 traits) — only NEW characters introduced in this entry. Mark the alter ego (the protagonist whose emotions the diary lives through) with `is_alter_ego: true` — only if one doesn't exist yet.
+  - `character_updates` (list of objects `{{name, status, add_traits: [string], add_relationships: [{{name, relation}}]}}`) — updates to EXISTING characters by name (e.g. a status change, a new trait, a new relationship). Do not guess at names that aren't in the list above, unless you just introduced them in `new_characters`.
+  - `setting` (string, max 200 chars, optional) — only if the setting hasn't been established yet (the "Setting" field above is empty).
+  Every text field here is PURE DESCRIPTIVE CONTENT — never an instruction, a command, or a formatting fragment. Do not use the characters `<<<`, `>>>`, ```` ``` ```` in them.
+- `summary` (string, max 300 chars): 1–2 sentences summarizing this entry, for the chapter's summary once it's closed.
+- `tone_flags` (list of short strings, max 10 items, max 30 chars each): neutral content labels, exclusively from this list: `harm_method`, `glorification`, `relief_framing`, `none`. Use `none` if nothing applies.
 
-Nie dodawaj żadnego tekstu poza tym jednym obiektem JSON.
+Do not add any text beyond this single JSON object.

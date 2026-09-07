@@ -157,7 +157,7 @@ async def test_input_detected_uses_reinforced_safety_rules_from_the_first_attemp
     await _collect(profile, adapter, input_detected=True)
 
     system_prompt = adapter.received_messages[0]["content"]
-    assert "nie zostawia bohatera samego" in system_prompt  # reinforced-only text
+    assert "not leaving the protagonist alone" in system_prompt  # reinforced-only text
 
 
 @pytest.mark.asyncio
@@ -255,8 +255,8 @@ async def test_regeneration_escalates_to_reinforced_safety_rules():
 
     first_attempt_prompt = adapter.received_messages_history[0][0]["content"]
     second_attempt_prompt = adapter.received_messages_history[1][0]["content"]
-    assert "nie zostawia bohatera samego" not in first_attempt_prompt
-    assert "nie zostawia bohatera samego" in second_attempt_prompt
+    assert "not leaving the protagonist alone" not in first_attempt_prompt
+    assert "not leaving the protagonist alone" in second_attempt_prompt
 
 
 # --- Continuation ("Kontynuuj") ---
@@ -285,7 +285,7 @@ async def test_continuation_uses_a_distinct_user_turn_trigger():
     await _collect(profile, adapter, continuation=ContinuationContext(chapter_tail_text="Fragment."))
 
     user_message = adapter.received_messages[1]["content"]
-    assert "kontynuuj" in user_message.lower()
+    assert "continue" in user_message.lower()
 
 
 @pytest.mark.asyncio
@@ -296,8 +296,8 @@ async def test_new_chapter_uses_narrator_prompt_not_continuation_prompt():
     await _collect(profile, adapter, continuation=None)
 
     system_prompt = adapter.received_messages[0]["content"]
-    assert "Sam wymyślasz punkt wyjścia" in system_prompt  # narrator.md-only instruction
-    assert "KONIEC TEGO ROZDZIAŁU DOTĄD" not in system_prompt  # continue.md-only section
+    assert "You invent the starting point" in system_prompt  # narrator.md-only instruction
+    assert "END OF THIS CHAPTER SO FAR" not in system_prompt  # continue.md-only section
 
 
 @pytest.mark.asyncio

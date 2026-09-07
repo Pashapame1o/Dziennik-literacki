@@ -40,7 +40,7 @@ def _is_transient(status_code: int, attempt: int) -> bool:
 # built its own system-only prompt. Fixed once here instead of per-caller:
 # this is a wire-protocol compatibility concern (this adapter's actual job),
 # not something each caller's prompt-building code should have to know about.
-_GENERIC_USER_TURN_TRIGGER = "Odpowiedz zgodnie z powyższymi instrukcjami."
+_GENERIC_USER_TURN_TRIGGER = "Respond according to the instructions above."
 
 
 def _ensure_non_system_turn(messages: list[Message]) -> list[Message]:
@@ -83,12 +83,12 @@ class OpenAICompatibleAdapter(LLMAdapter):
         if response.status_code == 429:
             raise LLMRequestError("Limit zapytań u dostawcy modelu został przekroczony. Spróbuj za chwilę.")
         if response.is_error:
-            # Treść odpowiedzi trafia tylko do logów serwera (może zawierać
-            # szczegóły providera, ale nigdy klucz — ten jest w nagłówku,
-            # nie w body) — użytkownik dostaje ogólny komunikat w UI, ale
-            # bez tego nie dało się zdiagnozować konkretnego 400/500 zdalnie.
+            # The response body only goes to the server log (it may contain
+            # provider details, but never the key — that's in the header, not
+            # the body) — the user gets a generic message in the UI, but
+            # without this there was no way to diagnose a specific 400/500 remotely.
             logger.warning(
-                "Dostawca modelu zwrócił błąd %s dla %s: %s",
+                "Model provider returned error %s for %s: %s",
                 response.status_code,
                 response.request.url,
                 response.text[:2000],
@@ -127,7 +127,7 @@ class OpenAICompatibleAdapter(LLMAdapter):
                             self._raise_for_status(response)
                         async for line in response.aiter_lines():
                             line = line.rstrip("\r")
-                            # niektóre bramki zgodne z OpenAI wysyłają "data:{...}" bez spacji
+                            # some OpenAI-compatible gateways send "data:{...}" with no space
                             if not line.startswith("data:"):
                                 continue
                             data = line[len("data:"):].lstrip()
@@ -138,8 +138,8 @@ class OpenAICompatibleAdapter(LLMAdapter):
                                 delta = chunk["choices"][0].get("delta", {})
                                 text = delta.get("content")
                             except (json.JSONDecodeError, KeyError, IndexError, TypeError):
-                                # pojedynczy uszkodzony chunk nie może uciąć reszty opowiadania
-                                logger.warning("Pomijam nieczytelny chunk SSE od dostawcy: %r", data[:200])
+                                # one unreadable chunk must not cut off the rest of the story
+                                logger.warning("Skipping unreadable SSE chunk from the provider: %r", data[:200])
                                 continue
                             if text:
                                 yield text
