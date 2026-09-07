@@ -338,6 +338,14 @@ async def generate(payload: GenerateRequest) -> EventSourceResponse:
         raise HTTPException(status_code=404, detail=f"Nieznany autor: {payload.author_slug}")
 
     overrides = payload.overrides.model_dump(exclude_none=True)
+    if "model_story" in overrides and "model_helper" not in overrides:
+        # Bez tego, zmiana samego "Model (opowiadanie)" na innego dostawcę
+        # (np. Gemini) zostawiała model_helper na domyślnym "gpt-4o-mini" z
+        # bazowych Settings — metadane/filtr wyjścia (oba na model_helper)
+        # leciałyby pod ten sam base_url z nazwą modelu z zupełnie innego
+        # providera i dostawałyby 400. Domyślnie: ten sam model co opowiadanie,
+        # użytkownik może to nadpisać osobno w drawerze, jeśli chce taniej.
+        overrides["model_helper"] = overrides["model_story"]
     effective_settings = get_settings().model_copy(update=overrides)
 
     generation_id = uuid.uuid4().hex

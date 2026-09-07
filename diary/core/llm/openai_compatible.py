@@ -6,6 +6,7 @@ Works against the OpenAI API itself and any OpenAI-compatible endpoint
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import AsyncIterator
@@ -16,6 +17,36 @@ from pydantic import BaseModel
 from diary.core.llm.base import LLMAdapter, LLMAuthError, LLMRequestError, Message
 
 logger = logging.getLogger(__name__)
+
+# One entry costs up to 3 sequential calls (story, metadata, output filter) —
+# a provider hiccup on any single one (rate limit, momentary overload) used to
+# throw away an already-generated story. These are the status codes providers
+# use for exactly that kind of transient condition; retried a couple of times
+# with backoff before giving up, so one blip doesn't cost the whole entry.
+_TRANSIENT_STATUS_CODES = {429, 500, 502, 503, 504}
+_MAX_TRANSIENT_RETRIES = 2
+_RETRY_BACKOFF_SECONDS = 1.5
+
+
+def _is_transient(status_code: int, attempt: int) -> bool:
+    return status_code in _TRANSIENT_STATUS_CODES and attempt < _MAX_TRANSIENT_RETRIES
+
+# Some OpenAI-compatible backends (Gemini's compat layer is the known case)
+# map `system` -> systemInstruction and everything else -> contents under the
+# hood, then 400 ("contents is not specified") if a request has no non-system
+# message at all. Real OpenAI tolerates a system-only message list, so this
+# only surfaces on other providers — and it has now bitten three independent
+# call sites (story generation, metadata, output filter) because each one
+# built its own system-only prompt. Fixed once here instead of per-caller:
+# this is a wire-protocol compatibility concern (this adapter's actual job),
+# not something each caller's prompt-building code should have to know about.
+_GENERIC_USER_TURN_TRIGGER = "Odpowiedz zgodnie z powyższymi instrukcjami."
+
+
+def _ensure_non_system_turn(messages: list[Message]) -> list[Message]:
+    if any(m.get("role") != "system" for m in messages):
+        return messages
+    return [*messages, {"role": "user", "content": _GENERIC_USER_TURN_TRIGGER}]
 
 
 class OpenAICompatibleAdapter(LLMAdapter):
@@ -52,6 +83,16 @@ class OpenAICompatibleAdapter(LLMAdapter):
         if response.status_code == 429:
             raise LLMRequestError("Limit zapytań u dostawcy modelu został przekroczony. Spróbuj za chwilę.")
         if response.is_error:
+            # Treść odpowiedzi trafia tylko do logów serwera (może zawierać
+            # szczegóły providera, ale nigdy klucz — ten jest w nagłówku,
+            # nie w body) — użytkownik dostaje ogólny komunikat w UI, ale
+            # bez tego nie dało się zdiagnozować konkretnego 400/500 zdalnie.
+            logger.warning(
+                "Dostawca modelu zwrócił błąd %s dla %s: %s",
+                response.status_code,
+                response.request.url,
+                response.text[:2000],
+            )
             raise LLMRequestError(f"Dostawca modelu zwrócił błąd ({response.status_code}).")
 
     async def generate_stream(
@@ -63,41 +104,48 @@ class OpenAICompatibleAdapter(LLMAdapter):
     ) -> AsyncIterator[str]:
         payload = {
             "model": model,
-            "messages": messages,
+            "messages": _ensure_non_system_turn(messages),
             "temperature": temperature,
             "stream": True,
         }
-        try:
-            async with self._client() as client:
-                async with client.stream(
-                    "POST",
-                    f"{self._base_url}/chat/completions",
-                    headers=self._headers(),
-                    json=payload,
-                ) as response:
-                    if response.status_code != 200:
-                        await response.aread()
-                        self._raise_for_status(response)
-                    async for line in response.aiter_lines():
-                        line = line.rstrip("\r")
-                        # niektóre bramki zgodne z OpenAI wysyłają "data:{...}" bez spacji
-                        if not line.startswith("data:"):
-                            continue
-                        data = line[len("data:"):].lstrip()
-                        if data == "[DONE]":
-                            return
-                        try:
-                            chunk = json.loads(data)
-                            delta = chunk["choices"][0].get("delta", {})
-                            text = delta.get("content")
-                        except (json.JSONDecodeError, KeyError, IndexError, TypeError):
-                            # pojedynczy uszkodzony chunk nie może uciąć reszty opowiadania
-                            logger.warning("Pomijam nieczytelny chunk SSE od dostawcy: %r", data[:200])
-                            continue
-                        if text:
-                            yield text
-        except httpx.HTTPError as exc:
-            raise LLMRequestError(f"Nie udało się połączyć z dostawcą modelu: {exc}") from exc
+        attempt = 0
+        while True:
+            try:
+                async with self._client() as client:
+                    async with client.stream(
+                        "POST",
+                        f"{self._base_url}/chat/completions",
+                        headers=self._headers(),
+                        json=payload,
+                    ) as response:
+                        if response.status_code != 200:
+                            await response.aread()
+                            if _is_transient(response.status_code, attempt):
+                                attempt += 1
+                                await asyncio.sleep(_RETRY_BACKOFF_SECONDS * attempt)
+                                continue
+                            self._raise_for_status(response)
+                        async for line in response.aiter_lines():
+                            line = line.rstrip("\r")
+                            # niektóre bramki zgodne z OpenAI wysyłają "data:{...}" bez spacji
+                            if not line.startswith("data:"):
+                                continue
+                            data = line[len("data:"):].lstrip()
+                            if data == "[DONE]":
+                                return
+                            try:
+                                chunk = json.loads(data)
+                                delta = chunk["choices"][0].get("delta", {})
+                                text = delta.get("content")
+                            except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+                                # pojedynczy uszkodzony chunk nie może uciąć reszty opowiadania
+                                logger.warning("Pomijam nieczytelny chunk SSE od dostawcy: %r", data[:200])
+                                continue
+                            if text:
+                                yield text
+                        return
+            except httpx.HTTPError as exc:
+                raise LLMRequestError(f"Nie udało się połączyć z dostawcą modelu: {exc}") from exc
 
     async def generate_structured(
         self,
@@ -109,22 +157,28 @@ class OpenAICompatibleAdapter(LLMAdapter):
     ) -> BaseModel:
         payload = {
             "model": model,
-            "messages": messages,
+            "messages": _ensure_non_system_turn(messages),
             "temperature": temperature,
             "response_format": {"type": "json_object"},
         }
-        try:
-            async with self._client() as client:
-                response = await client.post(
-                    f"{self._base_url}/chat/completions",
-                    headers=self._headers(),
-                    json=payload,
-                )
-        except httpx.HTTPError as exc:
-            raise LLMRequestError(f"Nie udało się połączyć z dostawcą modelu: {exc}") from exc
-        self._raise_for_status(response)
-        content = response.json()["choices"][0]["message"]["content"]
-        return schema.model_validate_json(content)
+        attempt = 0
+        while True:
+            try:
+                async with self._client() as client:
+                    response = await client.post(
+                        f"{self._base_url}/chat/completions",
+                        headers=self._headers(),
+                        json=payload,
+                    )
+            except httpx.HTTPError as exc:
+                raise LLMRequestError(f"Nie udało się połączyć z dostawcą modelu: {exc}") from exc
+            if _is_transient(response.status_code, attempt):
+                attempt += 1
+                await asyncio.sleep(_RETRY_BACKOFF_SECONDS * attempt)
+                continue
+            self._raise_for_status(response)
+            content = response.json()["choices"][0]["message"]["content"]
+            return schema.model_validate_json(content)
 
     async def embed(self, texts: list[str], *, model: str) -> list[list[float]]:
         payload = {"model": model, "input": texts}

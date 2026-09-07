@@ -307,8 +307,11 @@ const PROVIDER_PRESETS = {
   gemini: {
     label: 'Google Gemini',
     base_url: 'https://generativelanguage.googleapis.com/v1beta/openai/',
-    model_placeholder: 'gemini-2.5-flash',
-    model_hint: 'np. gemini-2.5-flash, gemini-2.5-pro. Klucz z Google AI Studio.',
+    model_placeholder: 'gemini-3.6-flash',
+    // Nazwy modeli Gemini zmieniają się szybciej niż ten plik — jeśli dostawca
+    // zwróci 404 "no longer available", sprawdź aktualną listę w Google AI
+    // Studio zamiast ufać tej podpowiedzi.
+    model_hint: 'np. gemini-3.6-flash. Nazwy modeli Gemini bywają wycofywane — sprawdź aktualną listę w Google AI Studio, jeśli dostaniesz 404. Klucz z Google AI Studio.',
   },
 };
 const CUSTOM_MODEL_HINT = 'Dokładna nazwa modelu zgodna z API tego dostawcy.';
