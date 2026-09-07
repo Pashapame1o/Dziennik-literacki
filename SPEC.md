@@ -4,8 +4,6 @@ Dziennik emocji zamieniany w opowiadanie w stylu klasycznego autora. Aplikacja d
 
 Słownictwo wymagań: **MUST** = twarde wymaganie, **SHOULD** = domyślne, odstępstwo wymaga zapisu w `ASSUMPTIONS.md`, **MAY** = opcjonalne.
 
-Wiadomość startowa dla agenta jest w `START.md`. Ten plik jest referencją; agent odwołuje się do niego po numerach sekcji.
-
 ---
 
 ## 1. Inspiracja architektoniczna

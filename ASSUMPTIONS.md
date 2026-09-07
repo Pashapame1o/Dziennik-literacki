@@ -5,11 +5,11 @@ from the eventual (M2+) shape. Each entry says what was assumed and why.
 
 ## M1 — szkielet end-to-end
 
-- **First commit predates `.gitignore`.** START.md's step order ("`.gitignore`
-  first, then `git init`") assumed a fresh repo, but `SPEC.md`/`START.md`
-  were already committed before this session began. `.gitignore` was added
-  as the first file of this session's work instead. No secrets, corpus, or
-  DB files were present in that earlier commit, so nothing sensitive leaked.
+- **First commit predates `.gitignore`.** The planned step order (`.gitignore`
+  first, then `git init`) assumed a fresh repo, but `SPEC.md` was already
+  committed before this work began. `.gitignore` was added as the first file
+  of this session's work instead. No secrets, corpus, or DB files were
+  present in that earlier commit, so nothing sensitive leaked.
 
 - **`.gitignore` extended beyond the SPEC 9.1 minimum.** Added
   `__pycache__/`, `*.pyc`, `.venv/`, `.pytest_cache/`, `*.egg-info/` —
@@ -43,9 +43,8 @@ from the eventual (M2+) shape. Each entry says what was assumed and why.
 - **UI language switching is not wired.** SPEC 5.4 treats `ui_language` and
   `story_language` as two separate settings. Only `story_language` affects
   anything in M1 (it feeds the prompt's `{story_lang}` layer); UI text is
-  hardcoded Polish per START.md's instruction ("UI ... domyślnie po
-  polsku"). `ui_language` exists as a `Settings` field for shape-stability
-  but has no effect yet.
+  hardcoded Polish by design. `ui_language` exists as a `Settings` field for
+  shape-stability but has no effect yet.
 
 - **`prompts/narrator.md`'s leading `#` header lines and `<!-- -->` block are
   stripped by the builder, not sent to the model.** The file's own header
