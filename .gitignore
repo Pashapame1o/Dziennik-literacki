@@ -1,0 +1,16 @@
+.env
+*.env
+authors/*/corpus/
+authors/*/examples/
+authors/*/index/
+*.db
+*.sqlite
+*.sqlite3
+eval/results/
+
+# standard Python/uv hygiene (addition beyond SPEC 9.1 minimum, see ASSUMPTIONS.md)
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.egg-info/

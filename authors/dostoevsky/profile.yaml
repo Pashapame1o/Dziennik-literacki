@@ -1,0 +1,65 @@
+# SPEC 4.2 — style card + metadata for one author.
+# No corpus text lives here or under corpus/ (gitignored, user-supplied, public domain).
+
+name: "Fiodor Dostojewski"
+slug: "dostoevsky"
+languages: ["pl", "ru"]
+era: "Petersburg, druga połowa XIX wieku"
+teaser: >
+  Gorączkowe monologi wewnętrzne, poniżenie i duma, ciasne petersburskie
+  wnętrza. Twoje emocje przeżyje ktoś, kto najpierw się z nimi pokłóci.
+
+default_setting_hints:
+  - "ciasne mieszkania, klatki schodowe, tanie pokoje wynajmowane"
+  - "ulice Petersburgu: błoto, mgła, duszne lato albo przenikliwy mróz"
+  - "kancelarie, szynki, poczekalnie — miejsca oczekiwania i poniżenia"
+
+voice:
+  syntax: "długie, kręte zdania podrzędnie złożone, przerywane wtrąceniami i przemyśleniami narratora"
+  rhythm: "gorączkowy w monologach wewnętrznych, spowalniający w opisach otoczenia"
+  sentence_length: "bardzo zróżnicowana: krótkie urwane zdania w napięciu, rozlewne w refleksji"
+  inner_monologue: "dominujący; bohater kłóci się sam ze sobą, przewiduje zarzuty, ironizuje z siebie"
+  narrator_irony: "gorzka, czasem autoironiczna, nigdy lekka"
+  nature_as_mirror: "pogoda i miasto odzwierciedlają stan wewnętrzny bohatera, rzadko są neutralnym tłem"
+
+devices:
+  - "mowa pozornie zależna"
+  - "nagłe wyznania i sceny skandalu publicznego"
+  - "podwójne postaci — sobowtóry i lustrzane odbicia charakteru"
+  - "gorączkowe dialogi, w których postaci przerywają sobie nawzajem"
+
+themes:
+  - "wina i pokuta"
+  - "poniżenie i duma"
+  - "bieda jako siła moralnie deformująca"
+  - "wiara kontra zwątpienie"
+  - "wolna wola i jej granice"
+
+character_archetypes:
+  - "biedny urzędnik lub student, dumny mimo poniżenia"
+  - "kobieta cierpiąca w milczeniu, silniejsza niż się wydaje"
+  - "cyniczny rozmówca, który wygłasza niewygodne prawdy"
+  - "postać obecna bez słów — ktoś, kto po prostu trwa przy bohaterze"
+
+lexicon_hints:
+  pl:
+    - "nagle, w istocie, bynajmniej, zresztą, co więcej"
+    - "słownictwo poniżenia i dumy: upokorzenie, duma, wstyd, honor"
+  ru:
+    - "вдруг, в сущности, впрочем"
+
+avoid:
+  - "krótkie, minimalistyczne zdania w stylu współczesnym"
+  - "humor sytuacyjny lekki, ironiczny dystans bez cierpienia w tle"
+  - "happy end bez wewnętrznego kosztu"
+
+retrieval:
+  k: 6
+  chunk_size_tokens: 450
+  chunk_overlap_tokens: 60
+  tone_tag_preferences:
+    low_valence: ["poniżenie", "gorączka", "spowiedź"]
+    high_energy: ["skandal", "kłótnia", "wyznanie"]
+    low_energy: ["oczekiwanie", "refleksja", "bezsenność"]
+
+version: 1
